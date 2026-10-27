@@ -15,7 +15,7 @@ fi
 # Blackwell (RTX 50) needs CUDA 12.8 wheels.
 uv pip install --python .venv/bin/python "torch>=2.7,<2.12" "torchvision>=0.22,<0.27" \
   --index-url https://download.pytorch.org/whl/cu128
-uv pip install --python .venv/bin/python -e "${LEROBOT_DIR}[feetech,dataset,training,smolvla]"
+uv pip install --python .venv/bin/python -e "${LEROBOT_DIR}[feetech,dataset,training,smolvla,groot]"  # groot: run GR00T checkpoints in policy_node
 # System dist-packages (apt) are built for numpy 1.x; shadow the ones LeRobot pulls in with venv copies.
 uv pip install --python .venv/bin/python scipy matplotlib
 

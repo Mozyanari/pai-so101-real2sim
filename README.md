@@ -10,7 +10,7 @@
 スマホで撮影 → COLMAP → 3DGRUT（3DGUT）→ USDZ 背景 ┐
 NVIDIA 公式アセット（積み木・皿）＋ SO-101 ──────────┴→ Isaac Sim 5.1 / Isaac Lab（LeIsaac）
 リーダーアーム → ROS 2 → シミュレーター ⇄ ROS 2 → rosbag2 → LeRobot v3.0 データセット → HF Hub（private）
-  → 学習：ACT（ローカル）／ SmolVLA（B300、HF Hub からストリーミング）
+  → 学習：SmolVLA（ローカル）／ GR00T N1.7（B300、HF Hub からストリーミング）／ ACT（比較用）
   → 推論ノード（シミュレーターと実機で共通）→ 評価：A シミュレーター／B 実機ゼロショット／C 実機データを少し追加
 ```
 
@@ -62,9 +62,10 @@ scripts/dataset/build.sh sim pai_sim
 .venv/bin/python -m so101_pai.dataset.push --repo-id <hf_user>/pai_sim --root data/datasets/pai_sim --yes
 
 # 3. 学習
-scripts/train/train.sh act local/pai_sim data/datasets/pai_sim         # ローカル
-STREAMING=1 scripts/train/train.sh act <hf_user>/pai_sim               # ストリーミング
-PYTHON=.venv-train/bin/python scripts/train/train.sh smolvla <hf_user>/pai_sim   # B300
+scripts/train/train.sh smolvla local/pai_sim data/datasets/pai_sim     # SmolVLA（ローカル）
+STREAMING=1 scripts/train/train.sh smolvla <hf_user>/pai_sim           # ストリーミング
+PYTHON=.venv-train/bin/python STREAMING=1 scripts/train/train.sh groot <hf_user>/pai_sim   # GR00T N1.7（B300）
+scripts/train/train.sh act local/pai_sim data/datasets/pai_sim         # ACT（比較用）
 
 # 4. 評価
 scripts/eval/sim.sh outputs/train/<run>/checkpoints/last/pretrained_model 20 A_sim
@@ -93,7 +94,7 @@ source /opt/ros/jazzy/setup.bash
 
 - [LeIsaac](https://github.com/LightwheelAI/leisaac)（Apache-2.0）：SO-101 の USD と片腕タスクのテンプレート。`sim/pai_sim` のタスクはこれを土台にしています。
 - [Isaac Sim 5.1 / Isaac Lab](https://github.com/isaac-sim/IsaacLab)：シミュレーター。
-- [LeRobot](https://github.com/huggingface/lerobot)（Apache-2.0）：データセットの形式、ACT・SmolVLA の学習と推論、SO-101 のドライバ。
+- [LeRobot](https://github.com/huggingface/lerobot)（Apache-2.0）：データセットの形式、SmolVLA・GR00T N1.7・ACT の学習と推論、SO-101 のドライバ。
 - [3DGRUT](https://github.com/nv-tlabs/3dgrut)：3D ガウシアンによる背景の再構成。
 - アセット：Isaac Sim 公式の `Props/Blocks`、NVIDIA SimReady `dishware_plastic_smallPlate_a01`。ファイルはこのリポジトリに含めず、`setup/04_task_assets.sh` で取得します。
 

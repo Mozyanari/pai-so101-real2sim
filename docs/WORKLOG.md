@@ -105,3 +105,14 @@
   - NuRec のガウシアンは、TiledCamera の画像に描かれた。通常の描画でも、軽量描画（`--rendering_mode performance`）でも表示された。
   - 120 ステップの速度は 45.9 / 53.3 steps/s で、背景による速度低下は見られなかった。
 - 10/28 の判断ポイント「3DGS の背景がカメラ画像に映るか」は、技術的には通った。残りは実際の撮影の品質と、机への位置合わせ。
+
+### 学習モデルの変更（ユーザーの判断）
+- 手元（RTX 5060 Ti）で学習するのは **SmolVLA**、B300 では **GR00T N1.7**（3B）に変えた。ACT は比較用のベースラインとして残す。
+- `scripts/train/train.sh` は `smolvla | groot | act` を切り替えられる。
+  - SmolVLA はバッチ 16 の場合、40 ステップで GPU メモリの最大使用量が 5.5 GB、速度は 2.3 ステップ/秒。20,000 ステップで約 2.4 時間の見込み。
+  - GR00T は LeRobot の SO-101 向けの手順（`docs/source/groot.mdx`）に合わせた：`--policy.type=groot --policy.base_model_path=nvidia/GR00T-N1.7-3B --policy.embodiment_tag=new_embodiment`、チャンク 16、bf16。
+    - `use_relative_actions=false` にした。LeRobot の同期推論は、相対行動に未対応のため。
+- `.venv` と `setup/07` に LeRobot の `groot` の追加パッケージを入れた（transformers 5.5.4 のまま、SmolVLA と共存できる）。
+- **ブロッカー**：GR00T N1.7 の土台の VLM `nvidia/Cosmos-Reason2-2B` は、利用規約への同意が必要な gated リポジトリだった。HF での同意と `hf auth login` をしないとダウンロードできない。
+  - 手元で 2 ステップ学習させる確認は、401 エラーで止まった。
+  - 同意はユーザーの判断なので、未実施。

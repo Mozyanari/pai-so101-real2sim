@@ -51,7 +51,8 @@ phone capture → COLMAP → 3DGRUT (3DGUT) → USDZ background
   + SimReady objects + SO-101 → Isaac Sim 5.1 / Isaac Lab v2.3.0 via LeIsaac (custom task)
   → teleop with SO-101 leader arm → Isaac Sim ROS 2 bridge → rosbag2
   → custom rosbag→LeRobot v3.0 converter → private HF Hub dataset
-  → ACT trained locally; final fine-tune (e.g. SmolVLA) on a B300 cloud, streaming from HF Hub
+  → SmolVLA fine-tuned locally (RTX 5060 Ti); GR00T N1.7 (3B) fine-tuned on a B300 cloud, streaming from HF Hub
+    (ACT stays available as a small from-scratch baseline; decided 2026-10-27)
   → ROS 2 inference node, the same node for sim and real → evaluation
 ```
 

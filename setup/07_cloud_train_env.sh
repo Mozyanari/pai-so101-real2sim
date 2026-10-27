@@ -4,7 +4,7 @@
 #
 #   git clone <this repo> pai && cd pai && setup/07_cloud_train_env.sh
 #   hf auth login                                   # token with read access to the private dataset
-#   PYTHON=.venv-train/bin/python STREAMING=1 scripts/train/train.sh smolvla <hf_user>/pai_sim
+#   PYTHON=.venv-train/bin/python STREAMING=1 scripts/train/train.sh groot <hf_user>/pai_sim
 #
 # B300 is Blackwell Ultra: it needs a CUDA 12.9+ PyTorch build. TORCH_INDEX picks the wheel index
 # (default cu130). The script stops if torch cannot run a kernel on the GPU.
@@ -28,7 +28,7 @@ git -C "$LEROBOT_DIR" checkout --quiet "$LEROBOT_COMMIT"
 [ -d "$VENV" ] || uv venv --python 3.12 "$VENV"
 # torch first from the CUDA index, then LeRobot (its range torch>=2.7,<2.12 accepts the installed build).
 uv pip install --python "$VENV/bin/python" --index-url "$TORCH_INDEX" "torch<2.12" "torchvision<0.27"
-uv pip install --python "$VENV/bin/python" -e "$LEROBOT_DIR[dataset,training,smolvla]"
+uv pip install --python "$VENV/bin/python" -e "$LEROBOT_DIR[dataset,training,groot]"
 
 "$VENV/bin/python" - <<'EOF'
 import torch
@@ -37,4 +37,4 @@ name = torch.cuda.get_device_name(0)
 x = torch.randn(1024, 1024, device="cuda")
 print(f"torch {torch.__version__} on {name} (sm_{''.join(map(str, torch.cuda.get_device_capability(0)))}): ok {float((x @ x).sum()):.1f}")
 EOF
-echo "train with: PYTHON=$VENV/bin/python scripts/train/train.sh smolvla <hf_user>/pai_sim"
+echo "train with: PYTHON=$VENV/bin/python scripts/train/train.sh groot <hf_user>/pai_sim"
