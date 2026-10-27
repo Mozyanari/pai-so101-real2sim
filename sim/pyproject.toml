@@ -1,0 +1,12 @@
+[project]
+name = "pai_sim"
+version = "0.1.0"
+description = "Isaac Lab / LeIsaac tasks for the PAI final project"
+requires-python = ">=3.11"
+
+[build-system]
+requires = ["setuptools>=68,<81"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pai_sim*"]

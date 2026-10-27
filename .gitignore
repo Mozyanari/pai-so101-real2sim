@@ -1,0 +1,26 @@
+# Environments and third-party checkouts (recreated by setup/*.sh)
+.venv/
+third_party/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+
+# Large or private data: never publish recordings of the room, assets, or datasets
+logs/
+data/
+bags/
+datasets/
+outputs/
+assets/
+*.usd
+*.usda
+*.usdc
+*.usdz
+*.ply
+*.mcap
+*.db3
+
+# The assignment spec is distributed by the course
+*.pdf
+.venv-train/
+.coverage
