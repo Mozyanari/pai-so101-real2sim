@@ -25,6 +25,7 @@ NVIDIA 公式アセット（積み木・皿）＋ SO-101 ───────�
 | `so101_pai/teleop/` | テレオペの操作ツール（キー 1 つでエピソードの開始・成功・失敗を送る） | `.venv` |
 | `so101_pai/dataset/` | rosbag2 → LeRobot v3.0 の変換、HF Hub へのアップロード | `.venv` |
 | `so101_pai/policy/` | 学習済み方策の推論（`runner.py`）、推論ノード、評価（`evaluation.py`、`eval_node.py`） | `.venv` |
+| `so101_pai/recon/` | 3DGS 背景の位置合わせ（`align.py`）、本物の物体の除去（`crop.py`）、USDZ の座標系の修正（`usdz.py`） | conda `3dgrut` |
 | `sim/pai_sim/` | Isaac Lab のタスク `PAI-SO101-PlaceBlock-v0` | conda `leisaac` |
 | `sim/ros_bridge.py` | シミュレーターを ROS 2 のロボットとして動かすブリッジ | conda `leisaac` |
 | `sim/tools/` | 動作確認と計測（`smoke_env.py`、`profile_reset.py`） | conda `leisaac` |
@@ -71,8 +72,15 @@ scripts/train/train.sh act local/pai_sim data/datasets/pai_sim         # ACT（�
 scripts/eval/sim.sh outputs/train/<run>/checkpoints/last/pretrained_model 20 A_sim
 ENABLE_FOLLOWER=1 scripts/eval/real.sh <checkpoint> 20 B_real          # 実機（人が成否を判定）
 
-# 背景の 3DGS（スマホの動画 → USDZ）
-scripts/recon/run.sh ~/capture/room.mp4 workspace
+# 背景の 3DGS（スマホの動画 → USDZ → 机に位置合わせ → 本物のフォロワーを消す）
+scripts/recon/run.sh capture/room.mp4 workspace
+CKPT=$(ls outputs/3dgrut/workspace/workspace/*/ckpt_last.pt)
+conda run -n 3dgrut python -m so101_pai.recon.align $CKPT assets/scene/workspace.align.json \
+    --table-length-cm 90 --table-width-cm 40 --table-height-cm 35 --facing across-far
+conda run -n 3dgrut python -m so101_pai.recon.crop $CKPT assets/scene/workspace.align.json ${CKPT%.pt}_crop.pt \
+    --box=-0.13,-0.20,0.006,0.08,0.15,0.30 --patch=0.10,-0.09,-0.02,0.31,0.15,0.006:-0.23,0,0
+#   → ${CKPT%.pt}_crop.pt を 3DGRUT で書き出し、so101_pai.recon.usdz で assets/scene/workspace_crop.usdz に（WORKLOG 参照）
+# シミュレーターは assets/scene/workspace_crop.usdz があれば自動で背景に使う（BACKGROUND=none で無効）
 ```
 
 アームのキャリブレーション（初回のみ）：

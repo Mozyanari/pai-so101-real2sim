@@ -5,8 +5,8 @@
 #   FAKE_LEADER=1 scripts/teleop/sim.sh test    # scripted arm motion instead of the leader (no hardware)
 #
 # Keys in this terminal: s=start  y=success  n=fail  r=reset  q=quit. The sim also ends an episode by itself
-# when the block is on the plate and released (success) or after 30 s (fail). Wait ~6 s after an episode ends
-# for the scene to reset before pressing s again.
+# when the block is on the plate and released (success) or after 30 s (fail). The scene resets right after an
+# episode ends, so s can be pressed again at once.
 # Output: data/bags/sim/<session>/ (convert with scripts/dataset/build.sh). Env: HEADLESS=1, LEADER_PORT, LEADER_ID.
 set -eo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"

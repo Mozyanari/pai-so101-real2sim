@@ -142,6 +142,11 @@ if has_stage export; then
       --output "$RUN_DIR/${SCENE}_nurec.usdz" --dataset "$SCENE_DIR" --format nurec
     conda deactivate
   fi
-  cp "$RUN_DIR/${SCENE}_nurec.usdz" "$USDZ"
-  log "wrote $USDZ ($(du -h "$USDZ" | cut -f1))"
+  # 3DGRUT puts a normalizing transform on the NuRec volume; reset it so the USDZ is in COLMAP's frame, which is
+  # what so101_pai.recon.align computes the sim placement in.
+  set +u
+  conda activate 3dgrut
+  (cd "$ROOT" && python -m so101_pai.recon.usdz "$RUN_DIR/${SCENE}_nurec.usdz" "$USDZ")
+  conda deactivate
+  log "wrote $USDZ ($(du -h "$USDZ" | cut -f1)); align it with so101_pai.recon.align"
 fi

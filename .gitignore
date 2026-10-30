@@ -24,3 +24,7 @@ assets/
 *.pdf
 .venv-train/
 .coverage
+
+# phone captures of the real workspace (private)
+capture/
+docs/progress/private/

@@ -32,6 +32,7 @@ from leisaac.utils.domain_randomization import (
     randomize_camera_uniform,
     randomize_object_uniform,
 )
+from pxr import Usd
 
 from . import mdp
 
@@ -43,11 +44,14 @@ PLATE_USD = str(
 # The asset is a round 9.9 cm x 4.5 cm deep plate; flatten and widen it to a ~17.8 cm x 1.8 cm paper plate.
 PLATE_SCALE = (1.8, 1.8, 0.4)
 
+LIGHT_SCALE = float(os.environ.get("PAI_LIGHT_SCALE", "1.0"))
 TABLE_SIZE = (0.80, 0.60, 0.04)  # x, y, thickness [m]
 BLOCK_SIZE = 0.047
-# Robot base at the origin facing +y (LeIsaac SO-101 USD convention).
-BLOCK_INIT = (0.08, 0.20, BLOCK_SIZE / 2)
-PLATE_INIT = (-0.12, 0.22, 0.0)
+# Robot base at the origin facing +y (LeIsaac SO-101 USD convention). The real 90 x 40 cm table spans
+# x -0.20..0.70 and y -0.09..0.31 around the base (assets/scene/workspace.align.json), so the plate sits front-right
+# and the block front-left, both within ~20 cm of the base. Place the real ones at the same spots.
+BLOCK_INIT = (-0.08, 0.17, BLOCK_SIZE / 2)
+PLATE_INIT = (0.15, 0.18, 0.0)
 REST_POSE_DEG = {
     "shoulder_pan": 0.0,
     "shoulder_lift": -100.0,
@@ -56,6 +60,20 @@ REST_POSE_DEG = {
     "wrist_roll": 0.0,
     "gripper": -10.0,
 }
+
+
+def spawn_fixed_plate(prim_path: str, cfg: sim_utils.UsdFileCfg, *args, **kwargs) -> Usd.Prim:
+    """spawn_from_usd that really applies cfg.rigid_props.
+
+    The SimReady plate keeps its rigid body on an instanceable child prim, which Isaac Lab cannot edit (it warns
+    "Could not perform 'modify_rigid_body_properties'" and leaves the plate dynamic), so un-instance it first.
+    """
+    prim = sim_utils.spawn_from_usd(prim_path, cfg.replace(rigid_props=None), *args, **kwargs)
+    for plate in sim_utils.find_matching_prims(prim_path):
+        for child in [p for p in Usd.PrimRange(plate) if p.IsInstance()]:
+            child.SetInstanceable(False)
+        sim_utils.modify_rigid_body_properties(str(plate.GetPath()), cfg.rigid_props)
+    return prim
 
 
 @configclass
@@ -83,6 +101,7 @@ class PlaceBlockSceneCfg(SingleArmTaskSceneCfg):
     plate: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Plate",
         spawn=sim_utils.UsdFileCfg(
+            func=spawn_fixed_plate,
             usd_path=PLATE_USD,
             scale=PLATE_SCALE,
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.92, 0.92, 0.9), roughness=0.85),
@@ -111,9 +130,15 @@ class PlaceBlockSceneCfg(SingleArmTaskSceneCfg):
         update_period=1 / 30.0,
     )
 
+    # Lights only shade the sim objects (robot, block, plate); the 3DGS background carries its own lighting.
+    # PAI_LIGHT_SCALE tunes both so the sim objects match the background's brightness.
     light = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Light",
-        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=1000.0),
+        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=1000.0 * LIGHT_SCALE),
+    )
+    ceiling = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/CeilingLight",
+        spawn=sim_utils.DistantLightCfg(color=(1.0, 0.97, 0.92), intensity=1500.0 * LIGHT_SCALE, angle=30.0),
     )
 
 
@@ -158,8 +183,9 @@ class PlaceBlockEnvCfg(SingleArmTaskEnvCfg):
         self.sim.dt = 1 / 60
         self.decimation = 2
         self.sim.render_interval = self.decimation
-        self.viewer.eye = (0.0, -0.45, 0.45)
-        self.viewer.lookat = (0.0, 0.2, 0.0)
+        # GUI view from just behind and above the robot, so left/right on screen match the operator's leader arm.
+        self.viewer.eye = (0.05, -0.30, 0.55)
+        self.viewer.lookat = (0.05, 0.15, 0.0)
         self.scene.robot.init_state.pos = (0.0, 0.0, 0.0)
         # Start folded like the real arm at rest (LeIsaac SO101_FOLLOWER_REST_POSE_RANGE centers, degrees).
         self.scene.robot.init_state.joint_pos = {name: math.radians(deg) for name, deg in REST_POSE_DEG.items()}
@@ -197,8 +223,10 @@ class PlaceBlockEnvCfg(SingleArmTaskEnvCfg):
 def add_background(scene: PlaceBlockSceneCfg) -> None:
     """Add the 3DGS background (NuRec USDZ from scripts/recon/run.sh) when PAI_BACKGROUND_USD is set.
 
-    The reconstruction is in COLMAP's normalized frame, so its pose comes from a sidecar JSON next to the USDZ
-    (<name>.align.json: {"pos": [x, y, z], "rot": [w, x, y, z], "scale": s}); identity if it does not exist.
+    The reconstruction is in COLMAP's frame, so its pose comes from a sidecar JSON next to the USDZ
+    (<name>.align.json from `so101_pai.recon.align`: {"pos": [x, y, z], "rot": [w, x, y, z], "scale": s});
+    identity if it does not exist. The real table is then part of the background, so the sim table box is hidden
+    and only its collision remains, resized and moved to the measured table ("table" in the JSON) when present.
     """
     usd = os.environ.get("PAI_BACKGROUND_USD")
     if not usd:
@@ -213,3 +241,8 @@ def add_background(scene: PlaceBlockSceneCfg) -> None:
             pos=tuple(align.get("pos", (0.0, 0.0, 0.0))), rot=tuple(align.get("rot", (1.0, 0.0, 0.0, 0.0)))
         ),
     )
+    scene.scene.spawn.visible = False
+    if "table" in align:
+        (x, y), (sx, sy) = align["table"]["center"], align["table"]["size"]
+        scene.scene.spawn.size = (sx, sy, TABLE_SIZE[2])
+        scene.scene.init_state.pos = (x, y, -TABLE_SIZE[2] / 2)

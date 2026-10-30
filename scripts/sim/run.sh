@@ -11,6 +11,10 @@ export OMNI_KIT_ACCEPT_EULA=YES
 source "$HOME/miniforge3/etc/profile.d/conda.sh"
 conda activate leisaac
 
+# LeIsaac looks for its assets under the git root of the current directory, which is this repo since it became a
+# git repo; point it at the submodule's assets (robot USD, sample scenes) explicitly.
+export LEISAAC_ASSETS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/third_party/leisaac/assets"
+
 # LEISAAC_ROS=1: use Isaac Sim's bundled ROS 2 Jazzy (Python 3.11 build) so sim scripts can import rclpy.
 # It talks to the system Jazzy (Python 3.12) nodes over DDS as usual.
 if [ "${LEISAAC_ROS:-0}" = "1" ]; then

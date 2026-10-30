@@ -43,10 +43,19 @@ stop_all() {
 }
 
 # start_sim_bridge <log file> [extra args]: the Isaac Sim robot (headless when HEADLESS=1).
+# BACKGROUND picks the 3DGS background USDZ (default: the aligned workspace with the real follower removed, when it
+# exists); BACKGROUND=none runs on the plain sim table.
 start_sim_bridge() {
   local log=$1; shift
   local view=()
   [ "${HEADLESS:-0}" = "1" ] && view=(--headless)
+  local background=${BACKGROUND:-$ROOT/assets/scene/workspace_crop.usdz}
+  if [ "$background" != "none" ] && [ -f "$background" ]; then
+    export PAI_BACKGROUND_USD="$background"
+    echo "background: $background"
+  else
+    unset PAI_BACKGROUND_USD
+  fi
   LEISAAC_ROS=1 start_bg "$log" "$ROOT/scripts/sim/run.sh" python "$ROOT/sim/ros_bridge.py" \
     "${view[@]}" --enable_cameras --rendering_mode performance "$@"
 }
