@@ -32,9 +32,11 @@ class PolicyNode(Node):
         device = self.declare_parameter("device", "cuda").value
         task = self.declare_parameter("task", DEFAULT_TASK).value
         rate_hz = self.declare_parameter("rate_hz", float(contract.FPS)).value
+        n_action_steps = self.declare_parameter("n_action_steps", 0).value  # 0: the checkpoint's setting
 
-        self.runner = load_policy(path, device, task)
+        self.runner = load_policy(path, device, task, n_action_steps)
         self.buffer = ObservationBuffer()
+        self.state_stamp = None
         self.active = False
 
         self.action_pub = self.create_publisher(JointState, contract.TOPIC_ACTION, 10)
@@ -46,6 +48,7 @@ class PolicyNode(Node):
         self.get_logger().info(f"policy {path} on {device}: waiting for an episode start")
 
     def on_state(self, msg: JointState) -> None:
+        self.state_stamp = msg.header.stamp
         self.buffer.state = contract.radians_to_motor(joint_state_to_array(msg))
 
     def on_image(self, camera: str, msg: Image) -> None:
@@ -63,7 +66,9 @@ class PolicyNode(Node):
             return
         motor = self.runner.act(self.buffer.frame())
         radians = contract.motor_to_radians(np.asarray(motor))
-        self.action_pub.publish(joint_state_msg(self.get_clock().now().to_msg(), radians))
+        # Stamp with the observation the action came from, so the sim bridge can drop actions computed before a
+        # reset (inference can still be running when the episode ends).
+        self.action_pub.publish(joint_state_msg(self.state_stamp, radians))
 
 
 def main() -> None:

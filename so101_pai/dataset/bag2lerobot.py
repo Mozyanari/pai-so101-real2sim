@@ -5,32 +5,28 @@ Usage (inside .venv with /opt/ros/jazzy sourced):
 
 Every message is timed by the bag's receive timestamp, so sim and real recordings share one clock.
 Frames are resampled at contract.FPS with zero-order hold; frames before every stream has a
-message are skipped.
+message are skipped. Bags are streamed one episode at a time (a 25 min sim session is ~57 GB of images).
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
-from dataclasses import dataclass, field
+from collections.abc import Iterator
 from pathlib import Path
 
 from so101_pai.common import contract, episode
 from so101_pai.common.ros_msgs import image_to_rgb, joint_state_to_array
-from so101_pai.dataset.timeline import EpisodeSpan, Timeline, episode_spans, frame_stamps
+from so101_pai.dataset.timeline import EpisodeSpan, EpisodeSplitter, Timeline, frame_stamps
 
 LOG = logging.getLogger("bag2lerobot")
 
 
-@dataclass
-class BagStreams:
-    state: Timeline = field(default_factory=Timeline)
-    action: Timeline = field(default_factory=Timeline)
-    cameras: dict[str, Timeline] = field(default_factory=lambda: {c: Timeline() for c in contract.CAMERA_TOPICS})
-    events: list[tuple[int, episode.EpisodeEvent]] = field(default_factory=list)
+STREAMS = ("state", "action", *contract.CAMERA_TOPICS)
 
 
-def read_bag(path: Path) -> BagStreams:
+def read_episodes(path: Path) -> Iterator[tuple[EpisodeSpan, dict[str, Timeline]]]:
+    """Each episode of a bag with its streams ("state", "action", camera names). Consume each before the next."""
     import rosbag2_py
     from rclpy.serialization import deserialize_message
     from rosidl_runtime_py.utilities import get_message
@@ -38,31 +34,30 @@ def read_bag(path: Path) -> BagStreams:
     reader = rosbag2_py.SequentialReader()
     reader.open(rosbag2_py.StorageOptions(uri=str(path)), rosbag2_py.ConverterOptions("", ""))
     types = {meta.name: get_message(meta.type) for meta in reader.get_all_topics_and_types()}
-    camera_by_topic = {topic: camera for camera, topic in contract.CAMERA_TOPICS.items()}
+    stream_by_topic = {contract.TOPIC_STATE: "state", contract.TOPIC_ACTION: "action"}
+    stream_by_topic.update({topic: camera for camera, topic in contract.CAMERA_TOPICS.items()})
 
-    streams = BagStreams()
+    splitter = EpisodeSplitter(STREAMS)
     while reader.has_next():
         topic, raw, stamp_ns = reader.read_next()
         if topic not in types:
             continue
         msg = deserialize_message(raw, types[topic])
-        if topic == contract.TOPIC_STATE:
-            streams.state.append(stamp_ns, joint_state_to_array(msg))
-        elif topic == contract.TOPIC_ACTION:
-            streams.action.append(stamp_ns, joint_state_to_array(msg))
-        elif topic in camera_by_topic:
-            streams.cameras[camera_by_topic[topic]].append(stamp_ns, msg)
-        elif topic == contract.TOPIC_EPISODE:
-            streams.events.append((stamp_ns, episode.decode(msg.data)))
-    return streams
+        if topic == contract.TOPIC_EPISODE:
+            span = splitter.event(stamp_ns, episode.decode(msg.data))
+            if span is not None:
+                yield span, splitter.streams
+        elif topic in stream_by_topic:
+            name = stream_by_topic[topic]
+            splitter.add(name, stamp_ns, msg if name in contract.CAMERA_TOPICS else joint_state_to_array(msg))
 
 
-def episode_frames(streams: BagStreams, span: EpisodeSpan) -> list[dict]:
+def episode_frames(streams: dict[str, Timeline], span: EpisodeSpan) -> list[dict]:
     frames = []
     for stamp_ns in frame_stamps(span.start_ns, span.end_ns, contract.FPS):
-        state = streams.state.sample(stamp_ns)
-        action = streams.action.sample(stamp_ns)
-        images = {camera: timeline.sample(stamp_ns) for camera, timeline in streams.cameras.items()}
+        state = streams["state"].sample(stamp_ns)
+        action = streams["action"].sample(stamp_ns)
+        images = {camera: streams[camera].sample(stamp_ns) for camera in contract.CAMERA_TOPICS}
         if state is None or action is None or any(image is None for image in images.values()):
             continue
         frame = {
@@ -89,8 +84,7 @@ def convert(bags: list[Path], repo_id: str, root: Path, include_failed: bool = F
     )
     saved = skipped = 0
     for bag in bags:
-        streams = read_bag(bag)
-        for span in episode_spans(streams.events):
+        for span, streams in read_episodes(bag):
             if not span.success and not include_failed:
                 skipped += 1
                 continue

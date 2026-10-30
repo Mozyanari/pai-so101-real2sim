@@ -43,6 +43,23 @@ def test_eval_node_counts_trials_and_saves(tmp_path):
     node.destroy_node()
 
 
+def test_eval_node_waits_for_the_policy_before_the_first_reset(tmp_path):
+    from rclpy.parameter import Parameter
+
+    from so101_pai.policy.eval_node import EvalNode
+
+    node = EvalNode(parameter_overrides=[Parameter("out", value=str(tmp_path / "eval.json"))])
+    sent = []
+    node.command_pub.publish = lambda msg: sent.append(msg.data)
+    node.tick()
+    assert sent == []  # no policy publishing actions yet
+    policy = node.create_publisher(JointState, contract.TOPIC_ACTION, 10)
+    node.tick()
+    assert sent == ["reset"]
+    node.destroy_publisher(policy)
+    node.destroy_node()
+
+
 class FakeRunner:
     def __init__(self) -> None:
         self.resets = 0
@@ -59,12 +76,13 @@ def test_policy_node_acts_only_during_episodes(monkeypatch):
 
     import so101_pai.policy.policy_node as policy_node
 
-    monkeypatch.setattr(policy_node, "load_policy", lambda path, device, task: FakeRunner())
+    monkeypatch.setattr(policy_node, "load_policy", lambda path, device, task, n_action_steps: FakeRunner())
     node = policy_node.PolicyNode(parameter_overrides=[Parameter("policy_path", value="ckpt")])
     sent = []
-    node.action_pub.publish = lambda msg: sent.append(np.array(msg.position))
+    node.action_pub.publish = lambda msg: sent.append(msg)
 
     state = JointState(name=list(contract.JOINT_NAMES), position=[0.0] * 6)
+    state.header.stamp.sec = 42
     node.on_state(state)
     for camera in contract.CAMERA_TOPICS:
         node.buffer.images[camera] = np.zeros((480, 640, 3), np.uint8)
@@ -75,7 +93,8 @@ def test_policy_node_acts_only_during_episodes(monkeypatch):
     node.tick()
     assert node.runner.resets == 1 and len(sent) == 1
     expected = contract.motor_to_radians(contract.radians_to_motor(np.zeros(6)) + 1.0)
-    np.testing.assert_allclose(sent[0], expected, atol=1e-5)
+    np.testing.assert_allclose(sent[0].position, expected, atol=1e-5)
+    assert sent[0].header.stamp.sec == 42  # stamped with the observation it came from
 
     node.on_status(String(data=episode.encode(episode.EpisodeEvent(episode.END, success=False))))
     node.tick()

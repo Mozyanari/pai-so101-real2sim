@@ -7,7 +7,9 @@
 # Keys in this terminal: s=start  y=success  n=fail  r=reset  q=quit. The sim also ends an episode by itself
 # when the block is on the plate and released (success) or after 30 s (fail). The scene resets right after an
 # episode ends, so s can be pressed again at once.
-# Output: data/bags/sim/<session>/ (convert with scripts/dataset/build.sh). Env: HEADLESS=1, LEADER_PORT, LEADER_ID.
+# The operator watches the front and wrist cameras in two rqt_image_view windows while Isaac Sim runs headless:
+# its own GUI viewport cut recording from 30 Hz to ~20 Hz on the RTX 5060 Ti. GUI=1 shows the Isaac Sim window instead.
+# Output: data/bags/sim/<session>/ (convert with scripts/dataset/build.sh). Env: GUI=1, LEADER_PORT, LEADER_ID.
 set -eo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
@@ -17,9 +19,18 @@ LOG_DIR="$ROOT/logs/teleop_sim/$SESSION"
 [ -e "$BAG" ] && { echo "$BAG already exists; pick another session name" >&2; exit 1; }
 trap stop_all EXIT
 
-start_sim_bridge "$LOG_DIR/bridge.log"
+if [ "${GUI:-0}" = "1" ]; then
+  start_sim_bridge "$LOG_DIR/bridge.log"
+else
+  HEADLESS=1 start_sim_bridge "$LOG_DIR/bridge.log"
+fi
 ros_env
 wait_for_topic /joint_states
+if [ "${GUI:-0}" != "1" ]; then
+  for cam in front wrist; do
+    start_bg "$LOG_DIR/view_$cam.log" ros2 run rqt_image_view rqt_image_view "/cam_$cam/image_raw"
+  done
+fi
 
 if [ "${FAKE_LEADER:-0}" = "1" ]; then
   node leader so101_pai.robot.fake_leader_node

@@ -22,7 +22,7 @@ NVIDIA 公式アセット（積み木・皿）＋ SO-101 ───────�
 |---|---|---|
 | `so101_pai/common/` | トピックの取り決め（関節角とモーター単位の変換）、エピソードのイベント、ROS メッセージの変換、ノード共通の起動処理、シミュレーター側のエピソード制御 | 両方 |
 | `so101_pai/robot/` | 実機ドライバのノード（リーダー、フォロワー、カメラ、テスト用の偽リーダー）、キャリブレーション | `.venv` |
-| `so101_pai/teleop/` | テレオペの操作ツール（キー 1 つでエピソードの開始・成功・失敗を送る） | `.venv` |
+| `so101_pai/teleop/` | テレオペの操作ツール（キー 1 つでエピソードの開始・成功・失敗を送る）と、人の代わりにお手本を作る自動の pick-and-place（`expert.py`） | `.venv`、conda `leisaac` |
 | `so101_pai/dataset/` | rosbag2 → LeRobot v3.0 の変換、HF Hub へのアップロード | `.venv` |
 | `so101_pai/policy/` | 学習済み方策の推論（`runner.py`）、推論ノード、評価（`evaluation.py`、`eval_node.py`） | `.venv` |
 | `so101_pai/recon/` | 3DGS 背景の位置合わせ（`align.py`）、本物の物体の除去（`crop.py`）、USDZ の座標系の修正（`usdz.py`） | conda `3dgrut` |
@@ -57,6 +57,8 @@ scripts/sim/e2e_pipeline.sh
 # 1. シミュレーターでテレオペして記録する（キー：s=開始 y=成功 n=失敗 r=リセット q=終了）
 scripts/teleop/sim.sh session01                  # リーダーアーム（キャリブレーション名 pai_leader）
 FAKE_LEADER=1 scripts/teleop/sim.sh test         # リーダーアームなし
+GUI=1 scripts/teleop/sim.sh session02           # Isaac Sim の画面を出す（記録は約 20 Hz に落ちる。標準は画面なし＋カメラ映像 2 窓で 30 Hz）
+SEED=10 scripts/teleop/expert.sh expert_main 150  # 人の代わりに自動のお手本で成功 150 エピソードを記録（画面なし、約 40 分）
 
 # 2. データセットを作り、HF Hub に private でアップロードする
 scripts/dataset/build.sh sim pai_sim

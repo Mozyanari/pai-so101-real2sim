@@ -38,6 +38,9 @@ class EvalNode(Node):
             self.create_timer(0.1, self.tick)
 
     def tick(self) -> None:
+        # The policy node creates its action publisher once the model is loaded; starting earlier wastes trials.
+        if not self.session.results and self.count_publishers(contract.TOPIC_ACTION) == 0:
+            return
         command = self.session.next_command(time.monotonic())
         if command:
             self.command_pub.publish(String(data=command))

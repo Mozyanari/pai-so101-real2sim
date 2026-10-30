@@ -67,13 +67,19 @@ class PolicyRunner:
         return action.squeeze(0).float().cpu().numpy()
 
 
-def load_policy(path: str, device: str, task: str) -> PolicyRunner:
-    """Load a checkpoint saved by lerobot-train (e.g. outputs/act/checkpoints/last/pretrained_model) or a Hub id."""
+def load_policy(path: str, device: str, task: str, n_action_steps: int = 0) -> PolicyRunner:
+    """Load a checkpoint saved by lerobot-train (e.g. outputs/act/checkpoints/last/pretrained_model) or a Hub id.
+
+    n_action_steps > 0 overrides how many actions of each predicted chunk run before the policy looks again
+    (fewer = more closed-loop; must not exceed the chunk size).
+    """
     from lerobot.configs.policies import PreTrainedConfig
     from lerobot.policies import get_policy_class, make_pre_post_processors
 
     config = PreTrainedConfig.from_pretrained(path)
     config.device = device
+    if n_action_steps > 0:
+        config.n_action_steps = n_action_steps
     policy = get_policy_class(config.type).from_pretrained(path, config=config)
     policy.to(device).eval()
     preprocessor, postprocessor = make_pre_post_processors(
