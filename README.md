@@ -4,10 +4,12 @@
 
 タスクは、積み木をつかんで白い紙皿（直径約 18 cm）に置くことです。
 
+動画：https://youtu.be/8UAb2yCa8ik（一部 2 倍速）
+
 ## 結果（概要）
 
 - シミュレーター 225 本で学習した ACT：シミュレーターで 13/20 成功。実機ではそのままでは成功せず、動作の流れ（近づく → 閉じる → 皿へ運ぶ）は出るが、積み木の位置に追従しない。
-- 実機のお手本 10 本だけで一から学習した ACT（A）と、シミュレーターの ACT から同じ 10 本で追加学習した ACT（B）を、学習途中のチェックポイントで比べた（定性的な比較）。1000 ステップの時点で、B は積み木を追いかけて閉じたが、A は追従も閉じる動作もまだできなかった。2 万ステップでは、どちらも実機でつかんで皿に置けた。
+- 実機のお手本 10 本だけで一から学習した ACT（A）と、シミュレーターの ACT から同じ 10 本で追加学習した ACT（B）を、学習途中のチェックポイントで比べた。同じ配置で各 3 回動かすと、A は 1000・5000・1 万・2 万ステップのどれも 0/3、B は 1/3・3/3・2/3・2/3 だった（回数が少ないので目安）。B は 1000 ステップの時点で積み木を追いかけて閉じたが、A は追従も閉じる動作もまだできなかった。
 - 実機で動かすときに効いたこと：開始姿勢（`REST_POSE=start`）、予測し直す間隔（`ACTION_STEPS=30`）、正面カメラ・皿・背景の配置をお手本の収集時にそろえること（`so101_pai/robot/camera_overlay.py`）。
 
 詳しい経過は `docs/WORKLOG.md` にあります。
@@ -31,12 +33,12 @@ NVIDIA 公式アセット（積み木・皿）＋ SO-101 ───────�
 | `so101_pai/common/` | トピックの取り決め（関節角とモーター単位の変換）、エピソードのイベント、ROS メッセージの変換、ノード共通の起動処理、シミュレーター側のエピソード制御 | 両方 |
 | `so101_pai/robot/` | 実機ドライバのノード（リーダー、フォロワー、カメラ、テスト用の偽リーダー）、キャリブレーション、評価時の開始姿勢（`rest.py`）、カメラの位置合わせ（`camera_overlay.py`） | `.venv` |
 | `so101_pai/teleop/` | テレオペの操作ツール（キー 1 つでエピソードの開始・成功・失敗を送る）と、人の代わりにお手本を作る自動の pick-and-place（`expert.py`） | `.venv`、conda `leisaac` |
-| `so101_pai/dataset/` | rosbag2 → LeRobot v3.0 の変換、HF Hub へのアップロード、rosbag2 → MP4（`bag2video.py`） | `.venv` |
+| `so101_pai/dataset/` | rosbag2 → LeRobot v3.0 の変換、HF Hub へのアップロード、rosbag2 → MP4（`bag2video.py`）、PNG → MP4（`frames2video.py`）、字幕入れ（`caption_video.py`） | `.venv` |
 | `so101_pai/policy/` | 学習済み方策の推論（`runner.py`）、推論ノード、評価（`evaluation.py`、`eval_node.py`） | `.venv` |
 | `so101_pai/recon/` | 3DGS 背景の位置合わせ（`align.py`）、本物の物体の除去（`crop.py`）、USDZ の座標系の修正（`usdz.py`） | conda `3dgrut` |
 | `sim/pai_sim/` | Isaac Lab のタスク `PAI-SO101-PlaceBlock-v0` | conda `leisaac` |
 | `sim/ros_bridge.py` | シミュレーターを ROS 2 のロボットとして動かすブリッジ | conda `leisaac` |
-| `sim/tools/` | 動作確認と計測（`smoke_env.py`、`profile_reset.py`） | conda `leisaac` |
+| `sim/tools/` | 動作確認と計測（`smoke_env.py`、`profile_reset.py`）、場面を回り込んで撮る動画（`orbit_video.py`） | conda `leisaac` |
 | `scripts/` | 起動スクリプト。`sim/`、`teleop/`、`dataset/`、`train/`、`eval/`、`recon/`、共通処理の `lib/` に分かれる | — |
 | `setup/` | 環境構築スクリプト（01〜07） | — |
 | `tests/` | pytest（ROS ノードを含め、ハードウェアなしで動く） | `.venv` |
@@ -85,6 +87,8 @@ ENABLE_FOLLOWER=1 ACTION_STEPS=30 REST_POSE=start RECORD=1 scripts/eval/real.sh 
 scripts/dataset/build.sh real pai_real                                  # 実機のお手本（scripts/teleop/real.sh で記録）
 INIT=outputs/train/<sim run>/checkpoints/last/pretrained_model scripts/train/train.sh act local/pai_real data/datasets/pai_real   # 実機データで追加学習
 .venv/bin/python -m so101_pai.dataset.bag2video data/bags/eval/B_real --out outputs/video   # 評価の記録を試行ごとの MP4 に
+scripts/video/caption_all.sh                  # 各クリップに条件（実機/シミュレーター・モデル・速度）の字幕を入れる
+.venv/bin/python scripts/video/make_movie.py  # 提出用の動画（1〜3 分）を組み立てる
 PYTHONPATH=$PWD /usr/bin/python3 -m so101_pai.robot.camera_overlay --reference <お手本の正面画像>  # 正面カメラを合わせる
 scripts/real/rest.sh                                                   # 実機のアームを初期姿勢へ戻すだけ
 

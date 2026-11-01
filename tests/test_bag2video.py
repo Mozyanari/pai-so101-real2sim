@@ -38,3 +38,43 @@ def test_convert_writes_one_clip_per_episode_named_by_its_result(tmp_path):
 
     whole = convert(bag, tmp_path / "whole", whole=True)
     assert [p.name for p in whole] == ["bag.mp4"]
+
+
+def test_frames2video_encodes_a_folder_of_pngs(tmp_path):
+    import av
+    import cv2
+
+    from so101_pai.dataset.frames2video import encode
+
+    for i in range(5):
+        cv2.imwrite(str(tmp_path / f"frame_{i:04d}.png"), np.full((64, 96, 3), i * 40, np.uint8))
+    out = tmp_path / "clip.mp4"
+    assert encode(tmp_path, out) == 5
+    with av.open(str(out)) as container:
+        assert sum(1 for _ in container.decode(video=0)) == 5
+
+
+def test_caption_writes_the_text_on_every_kept_frame(tmp_path):
+    import av
+
+    from so101_pai.dataset.bag2video import Clip
+    from so101_pai.dataset.caption_video import caption
+
+    src = Clip(tmp_path / "in.mp4")
+    for _ in range(10):
+        src.write(np.zeros((H, W, 3), np.uint8))
+    src.close()
+    assert caption(tmp_path / "in.mp4", tmp_path / "out.mp4", ["実機｜試行 1：成功", "2倍速"], speed=2) == 5
+    with av.open(str(tmp_path / "out.mp4")) as container:
+        frame = next(container.decode(video=0)).to_ndarray(format="rgb24")
+    assert frame[: H // 8, : W // 4].max() > 200  # white text in the top-left box
+    assert frame[H // 2 :, W // 2 :].max() < 30  # the rest is untouched
+
+
+def test_caption_font_shrinks_to_fit_a_long_line():
+    from so101_pai.dataset.caption_video import load_font
+
+    long_line = "B：シミュレーター 225 本で事前学習 → 実機のお手本 10 本で追加学習（20000 ステップ）"
+    font = load_font(H, W, [long_line])
+    assert font.getlength(long_line) + font.size <= W
+    assert load_font(H, W, ["短い"]).size == max(12, H // 26)
