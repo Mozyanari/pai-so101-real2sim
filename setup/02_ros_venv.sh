@@ -18,5 +18,6 @@ uv pip install --python .venv/bin/python "torch>=2.7,<2.12" "torchvision>=0.22,<
 uv pip install --python .venv/bin/python -e "${LEROBOT_DIR}[feetech,dataset,training,smolvla,groot]"  # groot: run GR00T checkpoints in policy_node
 # System dist-packages (apt) are built for numpy 1.x; shadow the ones LeRobot pulls in with venv copies.
 uv pip install --python .venv/bin/python scipy matplotlib
+uv pip install --python .venv/bin/python "rerun-sdk>=0.24.0,<0.34.0"  # lerobot-dataset-viz (the viz extra pulls more than needed)
 
 echo "DONE: .venv is ready (source /opt/ros/jazzy/setup.bash before use)"

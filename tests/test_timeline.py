@@ -47,3 +47,13 @@ def test_frame_stamps_fixed_rate():
     stamps = frame_stamps(0, 1_000_000_000, 30)
     assert len(stamps) == 31
     assert stamps[1] == 33_333_333
+
+
+def test_close_ends_an_open_episode_as_failed():
+    splitter = EpisodeSplitter(["state"])
+    assert splitter.close(5) is None  # nothing open
+    splitter.event(100, episode.EpisodeEvent(episode.START, task="t"))
+    splitter.add("state", 150, 150)
+    span = splitter.close(180)  # e.g. the operator stopped the run with Ctrl-C
+    assert (span.start_ns, span.end_ns, span.task, span.success) == (100, 180, "t", False)
+    assert splitter.close(190) is None

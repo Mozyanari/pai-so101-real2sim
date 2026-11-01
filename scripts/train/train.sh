@@ -6,7 +6,7 @@
 #   PYTHON=.venv-train/bin/python STREAMING=1 scripts/train/train.sh groot <hf_user>/pai_sim   # GR00T N1.7 (B300)
 #   scripts/train/train.sh act local/pai_sim data/datasets/pai_sim         # ACT baseline (small, from scratch)
 #
-# Env overrides: STEPS, BATCH, OUT, SAVE_FREQ, PYTHON (default .venv/bin/python; on the B300 the venv from setup/07),
+# Env overrides: STEPS, BATCH, OUT, SAVE_FREQ, INIT (smolvla: fine-tune this checkpoint instead of smolvla_base; act: fine-tune it instead of starting from scratch), PYTHON (default .venv/bin/python; on the B300 the venv from setup/07),
 # EXTRA (more lerobot-train flags, e.g. EXTRA="--wandb.enable=true").
 # Checkpoints land in $OUT/checkpoints/<step>/pretrained_model; policy_node loads that directory.
 set -eo pipefail
@@ -21,7 +21,7 @@ case "$POLICY" in
   smolvla)
     # Fine-tune the pretrained SmolVLA base (trained on community SO-100/101 data, same motor units).
     # Its config names the cameras camera1..3, so map ours onto them.
-    POLICY_ARGS=(--policy.path=lerobot/smolvla_base
+    POLICY_ARGS=(--policy.path="${INIT:-lerobot/smolvla_base}"
       --rename_map='{"observation.images.front": "observation.images.camera1", "observation.images.wrist": "observation.images.camera2"}')
     STEPS=${STEPS:-20000}; BATCH=${BATCH:-16} ;;
   groot)
@@ -33,7 +33,9 @@ case "$POLICY" in
       --policy.use_relative_actions=false --policy.use_bf16=true --dataset.image_transforms.enable=true)
     STEPS=${STEPS:-20000}; BATCH=${BATCH:-64} ;;
   act)
-    POLICY_ARGS=(--policy.type=act)
+    # From scratch, or (INIT=<checkpoint>) fine-tune e.g. the sim-trained ACT on real data; either way the
+    # normalization stats come from this dataset (lerobot_train overrides the checkpoint's).
+    if [ -n "${INIT:-}" ]; then POLICY_ARGS=(--policy.path="$INIT"); else POLICY_ARGS=(--policy.type=act); fi
     STEPS=${STEPS:-50000}; BATCH=${BATCH:-8} ;;
   *) echo "unknown policy: $POLICY" >&2; exit 1 ;;
 esac

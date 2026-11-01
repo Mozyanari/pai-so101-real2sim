@@ -29,7 +29,7 @@ class Trial:
 class EvalSession:
     trials: int
     settle_s: float = 2.0  # let the reset scene settle before starting
-    timeout_s: float = 45.0  # backstop; the sim itself ends an episode after 30 s
+    timeout_s: float = 60.0  # backstop; the sim itself ends an episode after 45 s
     results: list[Trial] = field(default_factory=list)
     phase: str = WAIT_RESET
     _phase_since: float | None = None

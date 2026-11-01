@@ -42,3 +42,26 @@ def block_on_plate_released(
     tcp = ee_frame.data.target_pos_w[:, 0, :] + quat_apply(ee_frame.data.target_quat_w[:, 0, :], offset_b)
     released = torch.linalg.norm(tcp - block.data.root_pos_w, dim=-1) > release_distance
     return on_plate & released
+
+
+def randomize_block_color(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor,
+    asset_cfg: SceneEntityCfg,
+    base: tuple[float, float, float],
+    brightness: tuple[float, float],
+    jitter: float,
+) -> None:
+    """Reset event: tint the block's PreviewSurface (spawned via visual_material) around `base`.
+
+    Each reset scales `base` by a brightness factor and adds a small per-channel jitter, so the color stays wood-like
+    instead of an arbitrary uniform RGB sample. Edits the USD shader, which the renderer picks up on the next frame.
+    """
+    from isaaclab.sim.utils import find_matching_prims
+    from pxr import Gf
+
+    asset: RigidObject = env.scene[asset_cfg.name]
+    for shader in find_matching_prims(f"{asset.cfg.prim_path}/material/Shader"):
+        scale = torch.empty(1).uniform_(*brightness).item()
+        color = [min(max(c * scale + torch.empty(1).uniform_(-jitter, jitter).item(), 0.0), 1.0) for c in base]
+        shader.GetAttribute("inputs:diffuseColor").Set(Gf.Vec3f(*color))

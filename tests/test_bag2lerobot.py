@@ -11,7 +11,7 @@ from std_msgs.msg import String  # noqa: E402
 
 from so101_pai.common import contract, episode  # noqa: E402
 from so101_pai.common.ros_msgs import image_to_rgb  # noqa: E402
-from so101_pai.dataset.bag2lerobot import convert  # noqa: E402
+from so101_pai.dataset.bag2lerobot import convert, motion_start  # noqa: E402
 
 SECOND = 1_000_000_000
 TOPIC_TYPES = {
@@ -92,3 +92,23 @@ def test_convert_keeps_only_successful_episodes(tmp_path):
     assert item["task"] == "Put the red block on the plate"
     np.testing.assert_allclose(item["observation.state"].numpy(), contract.radians_to_motor(np.zeros(6)), atol=1e-4)
     assert item["observation.images.front"].shape == (3, contract.IMAGE_HEIGHT, contract.IMAGE_WIDTH)
+
+
+def test_motion_start_finds_the_first_move_beyond_the_threshold():
+    still = [np.zeros(6), np.full(6, 0.5), np.full(6, -1.0)]
+    moving = [np.array([0, 0, 0, 0, 0, 3.0]), np.full(6, 10.0)]
+    assert motion_start(still + moving, threshold=2.0) == 3
+    assert motion_start(still, threshold=2.0) == len(still)
+
+
+def test_convert_can_drop_the_still_start(tmp_path):
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    bag = tmp_path / "bag"
+    write_bag(bag)
+    root = tmp_path / "dataset"
+    convert([bag], repo_id="local/test", root=root, use_videos=False, idle_threshold=5.0)
+
+    # The joints move 2 deg per frame, about 2 motor units: the first frame past 5 units is the 4th.
+    dataset = LeRobotDataset("local/test", root=root)
+    assert dataset.meta.total_frames == contract.FPS + 1 - 3

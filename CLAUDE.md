@@ -43,7 +43,7 @@ Goal: rebuild the real SO-101 workspace in simulation (real-to-sim), learn pick-
 
 Task: pick up a toy block and place it on a white paper plate. Object assets are limited to **NVIDIA-official sources**. All are Z-up with metersPerUnit=1.
 - Block: the Isaac Sim 5.1 asset library, `Isaac/Props/Blocks/{red,blue,green,yellow}_block.usd`. Each is a 4.7 cm cube with mass 0.02 kg. Base URL: `https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/`.
-- Place target: `nvidia/simready-assets` → `dishware_plastic_smallPlate_a01` (package metadata says CC-BY-4.0). SimReady has no white round plate, so the sim scales this round 9.9 cm plate by (1.8, 1.8, 0.4) to about 17.8 cm × 1.8 cm and overrides its material to white, to match the real ~18 cm white paper plate (decided 2026-10-27; the blue square `bigPlate_a01` is still fetched). Fix the real plate to the table and make the sim plate kinematic.
+- Place target: `nvidia/simready-assets` → `dishware_plastic_smallPlate_a01` (package metadata says CC-BY-4.0). SimReady has no white round plate, so the sim scales this 9.9 cm plate (its rim is a rounded square, not round; checked 10/31) by (1.8, 1.8, 0.4) to about 17.8 cm × 1.8 cm and overrides its material to white, to match the real ~18 cm white paper plate (decided 2026-10-27; the blue square `bigPlate_a01` is still fetched). Fix the real plate to the table and make the sim plate kinematic.
 - Buy real objects to match these sizes. Do not commit asset files to the public repo: the Isaac Sim asset license and the simready-assets license (its dataset card has none) are unconfirmed. Reference assets by URL or fetch them with a script instead.
 
 Pipeline:
@@ -67,6 +67,8 @@ Key design decisions:
 - Isaac ROS is out of scope for this project.
 
 ## Working style for this project
+
+Write everything addressed to the user in Japanese: replies, progress reports, questions, and summaries, including updates during long-running work. Keep code identifiers and technical terms as they are. Code, comments, and commit messages stay in English, and `docs/WORKLOG.md` stays in Japanese.
 
 Claude does the environment setup and implementation; on 2026-10-27 the user reversed their original plan to type the commands themselves. Keep every setup step as a reproducible script under `setup/`. Ask the user before accepting licenses (e.g. the Isaac Sim EULA), using sudo, editing `~/.bashrc`, publishing anything, or moving the physical robot.
 

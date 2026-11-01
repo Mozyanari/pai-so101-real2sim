@@ -23,6 +23,8 @@ class CameraNode(Node):
             raise ValueError(f"camera must be one of {list(contract.CAMERA_TOPICS)}")
 
         self.capture = cv2.VideoCapture(device, cv2.CAP_V4L2)
+        # MJPG: the wrist USB camera returned solid-green frames in its default YUYV mode (checked 10/31).
+        self.capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, contract.IMAGE_WIDTH)
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, contract.IMAGE_HEIGHT)
         self.capture.set(cv2.CAP_PROP_FPS, contract.FPS)

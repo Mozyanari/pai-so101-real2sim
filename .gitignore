@@ -25,6 +25,9 @@ assets/
 .venv-train/
 .coverage
 
-# phone captures of the real workspace (private)
+# phone captures of the real workspace and progress-page images of the room (private)
 capture/
-docs/progress/private/
+docs/progress/
+
+# The PDF report and its figures (real room images; submitted to omnicampus, not the repo)
+report/

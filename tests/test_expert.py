@@ -90,3 +90,11 @@ def test_smooth_noise_is_zero_mean_with_the_given_std_and_smooth():
     assert np.diff(samples[:, 0]).std() < 0.4 * 0.03  # steps are much smaller than the excursions
     noise.reset()
     assert np.all(noise.value == 0.0)
+
+
+def test_gripper_closes_further_for_smaller_blocks_and_matches_the_default():
+    assert expert.gripper_closed(2 * expert.BLOCK_HALF) == pytest.approx(expert.GRIPPER_CLOSED)
+    assert expert.gripper_closed(0.045) < expert.GRIPPER_CLOSED < expert.gripper_closed(0.050)
+    assert math.degrees(expert.gripper_closed(0.050) - expert.GRIPPER_CLOSED) == pytest.approx(2.7, abs=0.5)
+    plan = expert.plan_pick_place(np.array([0.0, 0.2, 0.025]), 0.0, np.array([0.15, 0.18, 0.0]), block_half=0.025)
+    assert min(w.gripper for w in plan) == pytest.approx(expert.gripper_closed(0.050))

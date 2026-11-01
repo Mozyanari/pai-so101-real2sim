@@ -15,11 +15,12 @@
 # Envs: conda "colmap" (setup/05_colmap_env.sh) and conda "3dgrut" (setup/06_3dgrut_env.sh).
 # Tunables (env vars):
 #   FPS=2            frames per second sampled from a video
+#   SHARPEST=1       extract FPS*SHARPEST frames/s and keep the sharpest of each SHARPEST (drops motion blur)
 #   MAX_DIM=1600     longest image side in pixels (VRAM and time scale with this)
 #   MATCHER=auto     sequential for video, exhaustive for photos; or set explicitly
 #   CAMERA_MODEL=OPENCV   single shared camera; 3DGUT trains on distorted images directly
 #   ITERS=30000      3DGRUT iterations
-#   MAX_GAUSSIANS=1000000  MCMC cap; 1M at 1600 px fits in 16 GB
+#   MAX_GAUSSIANS=1000000  MCMC cap; 1M at 1600 px fits in 16 GB (the plain 3DGUT config has no cap)
 #   CONFIG=apps/colmap_3dgut_mcmc.yaml
 #   EXTRA_TRAIN_ARGS="..."  extra hydra overrides passed to train.py
 set -eo pipefail
@@ -40,6 +41,7 @@ shift 2
 STAGES="${*:-frames colmap train export}"
 
 FPS="${FPS:-2}"
+SHARPEST="${SHARPEST:-1}"
 MAX_DIM="${MAX_DIM:-1600}"
 MATCHER="${MATCHER:-auto}"
 CAMERA_MODEL="${CAMERA_MODEL:-OPENCV}"
@@ -68,9 +70,10 @@ if has_stage frames; then
   rm -rf "$SCENE_DIR/images" && mkdir -p "$SCENE_DIR/images"
   SCALE="scale='if(gt(iw,ih),min(iw,$MAX_DIM),-2)':'if(gt(iw,ih),-2,min(ih,$MAX_DIM))'"
   if [ "$IS_VIDEO" = 1 ]; then
-    log "extracting frames from $INPUT at ${FPS} fps"
-    ffmpeg -hide_banner -loglevel error -i "$INPUT" -vf "fps=$FPS,$SCALE" -qscale:v 2 \
+    log "extracting frames from $INPUT at ${FPS} fps (sharpest of $SHARPEST)"
+    ffmpeg -hide_banner -loglevel error -i "$INPUT" -vf "fps=$(echo "$FPS * $SHARPEST" | bc),$SCALE" -qscale:v 2 \
       "$SCENE_DIR/images/frame_%05d.jpg"
+    [ "$SHARPEST" -gt 1 ] && "$ROOT/.venv/bin/python" -m so101_pai.recon.frames "$SCENE_DIR/images" "$SHARPEST"
   else
     log "resizing photos from $INPUT"
     find -L "$INPUT" -maxdepth 1 -type f -iregex '.*\.\(jpg\|jpeg\|png\)' | sort | while read -r f; do
@@ -119,10 +122,12 @@ if has_stage train; then
   conda activate 3dgrut
   cd "$THREEDGRUT"
   log "training $CONFIG for $ITERS iterations"
+  CAP_ARG=""  # only the MCMC strategy caps the Gaussian count
+  [[ "$CONFIG" == *mcmc* ]] && CAP_ARG="strategy.add.max_n_gaussians=$MAX_GAUSSIANS"
   # shellcheck disable=SC2086
   python train.py --config-name "$CONFIG" \
     path="$SCENE_DIR" out_dir="$RUN_DIR" experiment_name="$SCENE" \
-    n_iterations="$ITERS" strategy.add.max_n_gaussians="$MAX_GAUSSIANS" \
+    n_iterations="$ITERS" $CAP_ARG \
     dataset.downsample_factor=1 num_workers=4 \
     export_usd.enabled=true export_usd.format=nurec export_usd.path="$RUN_DIR/${SCENE}_nurec.usdz" \
     $EXTRA_TRAIN_ARGS

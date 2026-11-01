@@ -5,7 +5,7 @@ Sim:  keys become commands on contract.TOPIC_EPISODE_COMMAND; the sim bridge own
 Real: there is no bridge, so keys publish /episode/status directly and the operator resets the scene by hand.
 
     s  start an episode      y  end it as a success      n  end it as a failure
-    r  reset the scene (sim only, while not recording)
+    r  reset the scene (sim) / move the arm to the rest pose (real eval, while not recording)
 """
 
 from __future__ import annotations
@@ -18,14 +18,15 @@ SIM = "sim"
 REAL = "real"
 COMMAND = "command"
 STATUS = "status"
+REST = "rest"  # real: the node plays rest_trajectory() on the action topic
 
 SIM_KEYS = {"s": "start", "y": "success", "n": "fail", "r": "reset"}
-HELP = "s=start  y=success  n=fail  r=reset(sim)  q=quit"
+HELP = "s=start  y=success  n=fail  r=reset  q=quit"
 
 
 @dataclass(frozen=True)
 class Outgoing:
-    channel: str  # COMMAND or STATUS
+    channel: str  # COMMAND, STATUS or REST
     data: str
 
 
@@ -50,6 +51,8 @@ class Operator:
             return [self._status(episode.EpisodeEvent(episode.START, task=self.task))]
         if key in ("y", "n") and self.recording:
             return [self._status(episode.EpisodeEvent(episode.END, success=key == "y"))]
+        if key == "r" and not self.recording:
+            return [Outgoing(REST, "")]
         return []
 
     def on_status(self, event: episode.EpisodeEvent) -> None:

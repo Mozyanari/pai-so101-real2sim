@@ -1,7 +1,7 @@
 import pytest
 
 from so101_pai.common import episode
-from so101_pai.teleop.operator import COMMAND, REAL, SIM, STATUS, Operator, Outgoing
+from so101_pai.teleop.operator import COMMAND, REAL, REST, SIM, STATUS, Operator, Outgoing
 
 
 def test_sim_keys_become_bridge_commands():
@@ -21,8 +21,13 @@ def test_real_mode_publishes_status_and_ignores_out_of_order_keys():
     assert episode.decode(start.data) == episode.EpisodeEvent(episode.START, task="Put the red block on the plate.")
     op.on_status(episode.decode(start.data))
     assert op.on_key("s") == []  # already recording
+    assert op.on_key("r") == []  # no rest move while the policy drives the arm
     (end,) = op.on_key("n")
     assert episode.decode(end.data) == episode.EpisodeEvent(episode.END, success=False)
+
+
+def test_real_mode_r_asks_for_the_rest_pose_between_episodes():
+    assert Operator(REAL, "task").on_key("r") == [Outgoing(REST, "")]
 
 
 def test_counts_follow_status_topic():

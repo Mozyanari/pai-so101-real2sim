@@ -1,17 +1,25 @@
 # SO-101 Real2Sim ピック&プレイス
 
-実機の作業机をシミュレーションで再現し、シミュレーター内のテレオペで集めたデータだけでピック&プレイスを学習します。その方策が実機の SO-101 でゼロショットで動くかを調べます。Physical AI 応用編1（知能ロボティクス講座 2026 Summer）の最終課題です。
+実機の SO-101 の作業机を 3D Gaussian Splatting でシミュレーター（Isaac Sim）に再現し（Real-to-Sim）、シミュレーターで自動のお手本から集めたデータで学習した方策が実機で動くかを調べました（Sim-to-Real）。Physical AI 応用編1（知能ロボティクス講座 2026 Summer）の最終課題です。
 
-タスクは、赤い積み木（4.7 cm 角）をつかんで白い紙皿（直径約 18 cm）に置き、手を離すことです。
+タスクは、積み木をつかんで白い紙皿（直径約 18 cm）に置くことです。
+
+## 結果（概要）
+
+- シミュレーター 225 本で学習した ACT：シミュレーターで 13/20 成功。実機ではそのままでは成功せず、動作の流れ（近づく → 閉じる → 皿へ運ぶ）は出るが、積み木の位置に追従しない。
+- 実機のお手本 10 本だけで一から学習した ACT（A）と、シミュレーターの ACT から同じ 10 本で追加学習した ACT（B）を、学習途中のチェックポイントで比べた（定性的な比較）。1000 ステップの時点で、B は積み木を追いかけて閉じたが、A は追従も閉じる動作もまだできなかった。2 万ステップでは、どちらも実機でつかんで皿に置けた。
+- 実機で動かすときに効いたこと：開始姿勢（`REST_POSE=start`）、予測し直す間隔（`ACTION_STEPS=30`）、正面カメラ・皿・背景の配置をお手本の収集時にそろえること（`so101_pai/robot/camera_overlay.py`）。
+
+詳しい経過は `docs/WORKLOG.md` にあります。
 
 ## 全体の流れ
 
 ```
-スマホで撮影 → COLMAP → 3DGRUT（3DGUT）→ USDZ 背景 ┐
-NVIDIA 公式アセット（積み木・皿）＋ SO-101 ──────────┴→ Isaac Sim 5.1 / Isaac Lab（LeIsaac）
-リーダーアーム → ROS 2 → シミュレーター ⇄ ROS 2 → rosbag2 → LeRobot v3.0 データセット → HF Hub（private）
-  → 学習：SmolVLA（ローカル）／ GR00T N1.7（B300、HF Hub からストリーミング）／ ACT（比較用）
-  → 推論ノード（シミュレーターと実機で共通）→ 評価：A シミュレーター／B 実機ゼロショット／C 実機データを少し追加
+スマホで撮影 → COLMAP → 3DGRUT（3DGUT）→ USDZ 背景 → 机の実測に合わせて配置 ┐
+NVIDIA 公式アセット（積み木・皿）＋ SO-101 ───────────────────────────┴→ Isaac Sim 5.1 / Isaac Lab（LeIsaac）
+自動のお手本（IK + DART ノイズ）またはリーダーアーム → ROS 2 → rosbag2 → LeRobot v3.0 データセット
+  → 学習：ACT ／ SmolVLA（ローカル）／ GR00T N1.7（B300、HF Hub からストリーミング）
+  → 推論ノード（シミュレーターと実機で共通）→ 評価：シミュレーター／実機（そのまま）／実機 10 本で追加学習
 ```
 
 シミュレーターと実機は、同じ ROS 2 トピック（`so101_pai/common/contract.py`）でつながります。そのため、テレオペ・記録・推論・評価のコードは、シミュレーターと実機で共通です。
@@ -21,9 +29,9 @@ NVIDIA 公式アセット（積み木・皿）＋ SO-101 ───────�
 | 場所 | 役割 | 実行環境 |
 |---|---|---|
 | `so101_pai/common/` | トピックの取り決め（関節角とモーター単位の変換）、エピソードのイベント、ROS メッセージの変換、ノード共通の起動処理、シミュレーター側のエピソード制御 | 両方 |
-| `so101_pai/robot/` | 実機ドライバのノード（リーダー、フォロワー、カメラ、テスト用の偽リーダー）、キャリブレーション | `.venv` |
+| `so101_pai/robot/` | 実機ドライバのノード（リーダー、フォロワー、カメラ、テスト用の偽リーダー）、キャリブレーション、評価時の開始姿勢（`rest.py`）、カメラの位置合わせ（`camera_overlay.py`） | `.venv` |
 | `so101_pai/teleop/` | テレオペの操作ツール（キー 1 つでエピソードの開始・成功・失敗を送る）と、人の代わりにお手本を作る自動の pick-and-place（`expert.py`） | `.venv`、conda `leisaac` |
-| `so101_pai/dataset/` | rosbag2 → LeRobot v3.0 の変換、HF Hub へのアップロード | `.venv` |
+| `so101_pai/dataset/` | rosbag2 → LeRobot v3.0 の変換、HF Hub へのアップロード、rosbag2 → MP4（`bag2video.py`） | `.venv` |
 | `so101_pai/policy/` | 学習済み方策の推論（`runner.py`）、推論ノード、評価（`evaluation.py`、`eval_node.py`） | `.venv` |
 | `so101_pai/recon/` | 3DGS 背景の位置合わせ（`align.py`）、本物の物体の除去（`crop.py`）、USDZ の座標系の修正（`usdz.py`） | conda `3dgrut` |
 | `sim/pai_sim/` | Isaac Lab のタスク `PAI-SO101-PlaceBlock-v0` | conda `leisaac` |
@@ -72,7 +80,13 @@ scripts/train/train.sh act local/pai_sim data/datasets/pai_sim         # ACT（�
 
 # 4. 評価
 scripts/eval/sim.sh outputs/train/<run>/checkpoints/last/pretrained_model 20 A_sim
-ENABLE_FOLLOWER=1 scripts/eval/real.sh <checkpoint> 20 B_real          # 実機（人が成否を判定）
+ENABLE_FOLLOWER=1 ACTION_STEPS=30 REST_POSE=start RECORD=1 scripts/eval/real.sh <checkpoint> 10 B_real
+#   実機（人が成否を判定、試行の間に r で開始姿勢へ）。起動時に実際に使われた設定を表示する
+scripts/dataset/build.sh real pai_real                                  # 実機のお手本（scripts/teleop/real.sh で記録）
+INIT=outputs/train/<sim run>/checkpoints/last/pretrained_model scripts/train/train.sh act local/pai_real data/datasets/pai_real   # 実機データで追加学習
+.venv/bin/python -m so101_pai.dataset.bag2video data/bags/eval/B_real --out outputs/video   # 評価の記録を試行ごとの MP4 に
+PYTHONPATH=$PWD /usr/bin/python3 -m so101_pai.robot.camera_overlay --reference <お手本の正面画像>  # 正面カメラを合わせる
+scripts/real/rest.sh                                                   # 実機のアームを初期姿勢へ戻すだけ
 
 # 背景の 3DGS（スマホの動画 → USDZ → 机に位置合わせ → 本物のフォロワーを消す）
 scripts/recon/run.sh capture/room.mp4 workspace
@@ -108,4 +122,4 @@ source /opt/ros/jazzy/setup.bash
 - [3DGRUT](https://github.com/nv-tlabs/3dgrut)：3D ガウシアンによる背景の再構成。
 - アセット：Isaac Sim 公式の `Props/Blocks`、NVIDIA SimReady `dishware_plastic_smallPlate_a01`。ファイルはこのリポジトリに含めず、`setup/04_task_assets.sh` で取得します。
 
-このリポジトリで独自に作ったもの：ROS 2 のトピックの取り決めと、シミュレーターと実機で共通のノード群、rosbag2 → LeRobot の変換、シミュレーターのブリッジとタスク、評価の仕組み、起動スクリプト。
+このリポジトリで独自に作ったもの：3DGS 背景の位置合わせと加工（`so101_pai/recon`）、積み木を皿に置くタスクと自動のお手本（IK + DART）、シミュレーターと ROS 2 のブリッジ、ROS 2 のトピックの取り決めと、シミュレーターと実機で共通のノード群、rosbag2 → LeRobot / MP4 の変換、推論・評価の仕組み、起動スクリプト、実機とシミュレーターのずれの調査と修正（手首の回転、カメラ位置）。

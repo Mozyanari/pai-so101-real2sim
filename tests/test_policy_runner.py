@@ -62,3 +62,73 @@ def test_runner_batches_images_and_returns_flat_action():
     assert policy.seen["task"] == "put it"
     runner.reset()
     assert (policy.resets, pre.resets, post.resets) == (1, 1, 1)
+
+
+class FakeChunkPolicy(FakePolicy):
+    def predict_action_chunk(self, batch):
+        self.seen = batch
+        return torch.stack([batch[STATE_KEY] + i for i in range(3)], dim=1)  # (1, 3, 6)
+
+
+class AddOne(FakeProcessor):
+    def __call__(self, value):
+        assert value.shape == (1, 6)  # one action at a time, like LeRobot's policy server
+        return value + 1
+
+
+def test_runner_predict_chunk_postprocesses_every_action():
+    runner = PolicyRunner(FakeChunkPolicy(), FakeProcessor(), AddOne(), device="cpu", task="put it")
+    chunk = runner.predict_chunk(full_buffer().frame())
+    assert chunk.shape == (3, 6)
+    np.testing.assert_allclose(chunk, np.arange(6) + np.arange(3)[:, None] + 1)
+
+
+class _FakePolicy(torch.nn.Module):
+    loaded_on = None
+
+    def __init__(self):
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.zeros(1))
+        self.register_buffer("inv_freq", torch.ones(1))
+
+    @classmethod
+    def from_pretrained(cls, path, config):
+        cls.loaded_on = config.device
+        return cls()
+
+
+def _patch_lerobot(monkeypatch, config):
+    import lerobot.configs.policies as policies_cfg
+    import lerobot.policies as policies
+
+    monkeypatch.setattr(policies_cfg.PreTrainedConfig, "from_pretrained", staticmethod(lambda path: config))
+    monkeypatch.setattr(policies, "get_policy_class", lambda name: _FakePolicy)
+    monkeypatch.setattr(policies, "make_pre_post_processors", lambda **kwargs: (None, None))
+
+
+def test_load_policy_keeps_groot_in_bf16_and_reads_weights_on_cpu(monkeypatch):
+    from types import SimpleNamespace
+
+    from so101_pai.policy.runner import load_policy
+
+    config = SimpleNamespace(type="groot", device="cuda", model_params_fp32=True, n_action_steps=16)
+    _patch_lerobot(monkeypatch, config)
+    runner = load_policy("ckpt", device="cpu", task="t")
+    assert config.model_params_fp32 is False
+    assert _FakePolicy.loaded_on == "cpu"
+    assert runner.device == "cpu" and config.device == "cpu"
+    assert runner.policy.weight.dtype == torch.bfloat16
+    assert runner.policy.inv_freq.dtype == torch.float32  # buffers keep their precision
+
+
+def test_load_policy_leaves_other_policies_alone(monkeypatch):
+    from types import SimpleNamespace
+
+    from so101_pai.policy.runner import load_policy
+
+    config = SimpleNamespace(type="act", device="cuda", n_action_steps=100)
+    _patch_lerobot(monkeypatch, config)
+    runner = load_policy("ckpt", device="cpu", task="t", n_action_steps=20)
+    assert not hasattr(config, "model_params_fp32")
+    assert runner.policy.weight.dtype == torch.float32
+    assert config.n_action_steps == 20

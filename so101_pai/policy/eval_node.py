@@ -30,7 +30,7 @@ class EvalNode(Node):
         self.session = EvalSession(
             trials=self.declare_parameter("trials", 20).value,
             settle_s=self.declare_parameter("settle_s", 2.0).value,
-            timeout_s=self.declare_parameter("timeout_s", 45.0).value,
+            timeout_s=self.declare_parameter("timeout_s", 60.0).value,
         )
         self.command_pub = self.create_publisher(String, contract.TOPIC_EPISODE_COMMAND, 10)
         self.create_subscription(String, contract.TOPIC_EPISODE, self.on_status, 10)

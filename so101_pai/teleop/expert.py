@@ -22,7 +22,7 @@ TCP_OFFSET = np.array([0.0, 0.0, -0.093])
 GRIPPER_OPEN = 1.0  # rad; opening to 1.2 rad grasped no better
 # The jaw touches a 4.7 cm block at ~24 deg. Commanding the joint's lower limit (-10 deg) made the soft position
 # drive push with its full 10 Nm (>100 N at the pads) and the block squirted out, so close only ~7 deg past contact.
-GRIPPER_CLOSED = 0.30  # rad
+GRIPPER_CLOSED = 0.30  # rad, for the 4.7 cm block; gripper_closed() shifts it for other sizes
 BLOCK_HALF = 0.047 / 2
 PLATE_TOP = 0.018  # the scaled plate is 1.8 cm tall
 CARRY_HEIGHT = 0.12  # TCP height while moving to the plate
@@ -67,6 +67,7 @@ def plan_pick_place(
     block_yaw: float,
     plate_pos: np.ndarray,
     rng: np.random.Generator | None = None,
+    block_half: float = BLOCK_HALF,
 ) -> list[Waypoint]:
     """Waypoints from the current pose to the block, onto the plate, and away.
 
@@ -87,10 +88,10 @@ def plan_pick_place(
 
     up = np.array([0.0, 0.0, 1.0])
     # The fixed finger goes down beside the block; closing the jaw then pushes the block against it.
-    grasp = np.array([block_pos[0], block_pos[1], BLOCK_HALF]) - (BLOCK_HALF + FINGER_CLEARANCE) * grasp_rot[:, 0]
+    grasp = np.array([block_pos[0], block_pos[1], block_half]) - (block_half + FINGER_CLEARANCE) * grasp_rot[:, 0]
     grasp[:2] += rng.uniform(-0.004, 0.004, size=2)
-    drop = np.array([*(plate_pos[:2] + rng.uniform(-0.02, 0.02, size=2)), PLATE_TOP + BLOCK_HALF + 0.01])
-    place = drop - BLOCK_HALF * place_rot[:, 0]  # where the TCP is when the held block's center is at `drop`
+    drop = np.array([*(plate_pos[:2] + rng.uniform(-0.02, 0.02, size=2)), PLATE_TOP + block_half + 0.01])
+    place = drop - block_half * place_rot[:, 0]  # where the TCP is when the held block's center is at `drop`
     carry = CARRY_HEIGHT + rng.uniform(-0.02, 0.03)
     # Detour: halfway to the plate, off the straight line by up to 3 cm sideways and 2 cm up.
     side = np.cross(up, np.append(place[:2] - grasp[:2], 0.0))
@@ -100,7 +101,7 @@ def plan_pick_place(
     mid_rot = interpolate_rotation(grasp_rot, place_rot, 0.5)
     retreat = place + rng.uniform(0.06, 0.10) * up + np.append(rng.uniform(-0.02, 0.02, size=2), 0.0)
 
-    open_, closed = GRIPPER_OPEN, GRIPPER_CLOSED
+    open_, closed = GRIPPER_OPEN, gripper_closed(2 * block_half)
     return [
         Waypoint(grasp + rng.uniform(0.06, 0.10) * up, grasp_rot, open_, seconds(2.0)),
         Waypoint(grasp, grasp_rot, open_, seconds(1.0)),
@@ -134,6 +135,19 @@ class SmoothNoise:
         shock = self.rng.normal(size=self.sigma.shape) * self.sigma * math.sqrt(1 - self.decay**2)
         self.value = self.decay * self.value + shock
         return self.value
+
+
+def gripper_closed(block_size: float) -> float:
+    """GRIPPER_CLOSED moved by how much earlier/later the jaw touches a block of this size than the 4.7 cm one.
+
+    The jaw gap grows as ~1.6 cm + 7.3 cm * sin(angle) (measured in the sim), so a 5 cm block is touched ~3 deg later;
+    closing to the same angle would squeeze it harder and push it out.
+    """
+
+    def contact(size: float) -> float:
+        return math.asin((size - 0.016) / 0.073)
+
+    return GRIPPER_CLOSED + contact(block_size) - contact(2 * BLOCK_HALF)
 
 
 def plan_duration(plan: list[Waypoint]) -> float:

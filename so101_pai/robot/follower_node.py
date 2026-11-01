@@ -14,7 +14,12 @@ from sensor_msgs.msg import JointState
 from so101_pai.common import contract
 from so101_pai.common.ros_msgs import array_to_motor_dict, joint_state_msg, joint_state_to_array, motor_dict_to_array
 from so101_pai.common.ros_node import run
-from so101_pai.robot.calibration import connect_calibrated
+from so101_pai.robot.calibration import (
+    WRIST_ROLL_OFFSET_DEG,
+    arm_motor_to_radians,
+    connect_calibrated,
+    radians_to_arm_motor,
+)
 
 
 class FollowerNode(Node):
@@ -30,6 +35,8 @@ class FollowerNode(Node):
         rate_hz = self.declare_parameter("rate_hz", float(contract.FPS)).value
         max_step = self.declare_parameter("max_relative_target", 10.0).value
         self.enable = self.declare_parameter("enable", False).value
+        # Where the sim's wrist_roll zero is on this arm (see calibration.WRIST_ROLL_OFFSET_DEG).
+        self.roll_offset = self.declare_parameter("wrist_roll_offset_deg", WRIST_ROLL_OFFSET_DEG).value
 
         self.robot = SOFollower(
             SO101FollowerConfig(port=port, id=arm_id, use_degrees=False, max_relative_target=max_step)
@@ -42,16 +49,16 @@ class FollowerNode(Node):
         self.create_subscription(JointState, contract.TOPIC_ACTION, self.on_action, 10)
         self.create_timer(1.0 / rate_hz, self.tick)
         mode = "ENABLED (arm will move)" if self.enable else "read-only (set enable:=true to move)"
-        self.get_logger().info(f"follower on {port}: {mode}")
+        self.get_logger().info(f"follower on {port}: {mode}, max_relative_target={max_step}, id={arm_id}")
 
     def on_action(self, msg: JointState) -> None:
-        self.target = contract.radians_to_motor(joint_state_to_array(msg))
+        self.target = radians_to_arm_motor(joint_state_to_array(msg), self.roll_offset)
 
     def tick(self) -> None:
         if self.enable and self.target is not None:
             self.robot.send_action(array_to_motor_dict(self.target))
         observation = self.robot.get_observation()
-        radians = contract.motor_to_radians(motor_dict_to_array(observation))
+        radians = arm_motor_to_radians(motor_dict_to_array(observation), self.roll_offset)
         self.publisher.publish(joint_state_msg(self.get_clock().now().to_msg(), radians))
 
     def destroy_node(self) -> None:

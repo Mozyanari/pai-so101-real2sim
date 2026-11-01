@@ -75,6 +75,14 @@ class EpisodeSplitter:
             return span
         return None
 
+    def close(self, stamp_ns: int) -> EpisodeSpan | None:
+        """End the open episode, if any, as failed at `stamp_ns` (a run stopped without an end event)."""
+        if self._open is None:
+            return None
+        span = EpisodeSpan(self._open[0], stamp_ns, self._open[1], False)
+        self._open = None
+        return span
+
 
 def episode_spans(events: list[tuple[int, episode.EpisodeEvent]]) -> list[EpisodeSpan]:
     """Pair start/end events (EpisodeSplitter's rules) from a complete list."""

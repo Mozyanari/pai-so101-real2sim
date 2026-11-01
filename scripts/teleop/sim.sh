@@ -5,7 +5,7 @@
 #   FAKE_LEADER=1 scripts/teleop/sim.sh test    # scripted arm motion instead of the leader (no hardware)
 #
 # Keys in this terminal: s=start  y=success  n=fail  r=reset  q=quit. The sim also ends an episode by itself
-# when the block is on the plate and released (success) or after 30 s (fail). The scene resets right after an
+# when the block is on the plate and released (success) or after 45 s (fail). The scene resets right after an
 # episode ends, so s can be pressed again at once.
 # The operator watches the front and wrist cameras in two rqt_image_view windows while Isaac Sim runs headless:
 # its own GUI viewport cut recording from 30 Hz to ~20 Hz on the RTX 5060 Ti. GUI=1 shows the Isaac Sim window instead.

@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Fetch the NVIDIA-official task assets into assets/pai (git-ignored; licenses not cleared for redistribution).
 #   - Blocks: Isaac Sim 5.1 asset library, Isaac/Props/Blocks/{red,blue,green,yellow}_block.usd (4.7 cm cubes)
-#   - Plates: HF nvidia/simready-assets, dishware_plastic_{big,small}Plate_a01 (CC-BY-4.0 per package metadata)
+#   - Plates: HF nvidia/simready-assets, dishware_plastic_{big,small}Plate_a01 and dishware_bowl_a01 (flattened into
+#     a round plate) (CC-BY-4.0 per package metadata)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$ROOT/assets/pai"
 ISAAC="https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Props/Blocks"
 SIMREADY="https://huggingface.co/datasets/nvidia/simready-assets"
-PLATES="dishware_plastic_bigPlate_a01 dishware_plastic_smallPlate_a01"
+PLATES="dishware_plastic_bigPlate_a01 dishware_plastic_smallPlate_a01 dishware_bowl_a01"
 
 mkdir -p "$DEST/blocks/Materials/Textures"
 TEXTURES=$(for c in red1 green1 blue1 yellow; do for k in BaseColor Normal Roughness; do echo "Materials/Textures/basic_block_${c}_${k}.png"; done; done)

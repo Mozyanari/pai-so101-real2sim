@@ -24,6 +24,11 @@ parser.add_argument(
     action="append",
     help="debug: drive the arm to 6 comma-separated joint angles (deg) and save both cameras; repeatable",
 )
+parser.add_argument(
+    "--nominal-camera",
+    action="store_true",
+    help="debug: turn off the front camera's reset jitter, to compare its nominal pose with the real camera",
+)
 args = parser.parse_args()
 app = AppLauncher(args).app
 
@@ -60,6 +65,18 @@ def look_at_quat(eye, target, up=(0.0, 0.0, 1.0)):
     return tuple(_quat_wxyz(np.column_stack([right, np.cross(right, forward), -forward])))
 
 
+def log_camera(env, name: str, origin) -> None:
+    """Pose (env frame, ROS convention: +z forward, +x right, +y down) and intrinsics of a free camera.
+
+    Not for the wrist camera: it reads the USD xform, which does not follow the simulated arm.
+    """
+    camera = env.scene[name]
+    camera._update_poses(camera._ALL_INDICES)  # data.pos_w is only refreshed with update_latest_camera_pose
+    data = camera.data
+    pos = (data.pos_w[0] - origin).tolist()
+    log(f"camera {name}: pos {pos} quat_ros {data.quat_w_ros[0].tolist()} K {data.intrinsic_matrices[0].tolist()}")
+
+
 def main() -> None:
     env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=1)
     views = [tuple(tuple(float(v) for v in part.split(",")) for part in view.split(":")) for view in args.view or []]
@@ -69,6 +86,11 @@ def main() -> None:
         env_cfg.scene.front.offset.pos = eye
         env_cfg.scene.front.offset.rot = look_at_quat(eye, target)
         env_cfg.scene.front.offset.convention = "opengl"
+    if args.nominal_camera:
+        for name, term in vars(env_cfg.events).items():
+            if getattr(term, "func", None) is not None and term.func.__name__ == "randomize_camera_uniform":
+                setattr(env_cfg.events, name, None)
+                log(f"disabled {name}")
     env_cfg.use_teleop_device("so101leader")  # absolute joint-position actions, as in leader teleop
     env = gym.make(args.task, cfg=env_cfg).unwrapped
     obs, _ = env.reset()
@@ -96,6 +118,9 @@ def main() -> None:
         for i, name in enumerate(frame.data.target_frame_names):
             log(f"ee {name}: {(frame.data.target_pos_w[0, i] - origin).tolist()}")
 
+    gripper = robot.body_names.index("gripper")  # the wrist camera's parent; its USD xform is not synced
+    gripper_pos = (robot.data.body_pos_w[0, gripper] - origin).tolist()
+    log(f"gripper body: pos {gripper_pos} quat {robot.data.body_quat_w[0, gripper].tolist()}")
     args.out.mkdir(parents=True, exist_ok=True)
     for key, value in obs["policy"].items():
         if getattr(value, "ndim", 0) == 4 and value.shape[-1] == 3:
@@ -109,7 +134,8 @@ def main() -> None:
         for key in ("front", "wrist"):
             path = args.out / f"pose_{i:02d}_{key}.png"
             imageio.imwrite(path, obs["policy"][key][0].cpu().numpy())
-        log(f"saved pose {i}: {pose} deg")
+        reached = ",".join(f"{v:.1f}" for v in torch.rad2deg(robot.data.joint_pos[0]).tolist())
+        log(f"saved pose {i}: {pose} deg (reached {reached})")
     camera = env.scene["front"]
     for i, (eye, target) in enumerate(views):
         camera.set_world_poses_from_view(
@@ -120,6 +146,7 @@ def main() -> None:
         path = args.out / f"view_{i:02d}.png"
         imageio.imwrite(path, obs["policy"]["front"][0].cpu().numpy())
         log(f"saved {path} from {eye} looking at {target}")
+        log_camera(env, "front", origin)
     env.close()
 
 

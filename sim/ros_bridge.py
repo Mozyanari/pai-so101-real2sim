@@ -97,6 +97,7 @@ class SimBridge(Node):
         if terminated.any() or truncated.any():
             success = bool(self.env.termination_manager.get_term("success")[0])
             self.apply(self.control.on_env_done(success))
+            self.hold_reset_pose()  # the env has reset itself inside step()
 
     def apply(self, decision: Decision) -> None:
         for event in decision.events:
@@ -108,11 +109,16 @@ class SimBridge(Node):
             self.env.episode_length_buf[:] = 0
         if decision.reset_scene:
             self.env.reset()
-            # Hold the reset pose until a command stamped after the reset arrives. Otherwise the arm drives back to
-            # the last command of a policy that went idle at the episode end, and the next episode starts there,
-            # not at rest (the policy stamps actions with the observation they came from).
-            self.target = None
-            self.reset_ns = self.get_clock().now().nanoseconds
+            self.hold_reset_pose()
+
+    def hold_reset_pose(self) -> None:
+        """After any scene reset, hold the reset pose until a command stamped after the reset arrives.
+
+        Otherwise the arm drives back to the last command of a policy that went idle at the episode end, and the next
+        episode starts there, not at rest (the policy stamps actions with the observation they came from).
+        """
+        self.target = None
+        self.reset_ns = self.get_clock().now().nanoseconds
 
     def publish_observation(self, obs) -> None:
         stamp = self.get_clock().now().to_msg()
@@ -195,7 +201,11 @@ class ExpertDriver:
         w, x, y, z = block.root_quat_w[0].tolist()
         yaw = float(np.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)))
         self.plan = expert.plan_pick_place(
-            (block.root_pos_w[0] - origin).cpu().numpy(), yaw, (plate.root_pos_w[0] - origin).cpu().numpy(), self.rng
+            (block.root_pos_w[0] - origin).cpu().numpy(),
+            yaw,
+            (plate.root_pos_w[0] - origin).cpu().numpy(),
+            self.rng,
+            block_half=getattr(self.env.cfg, "block_size", 2 * expert.BLOCK_HALF) / 2,
         )
         pos, rot = self.tcp_pose()
         gripper = float(self.robot.data.joint_pos[0, self.bridge.joint_ids[-1]])

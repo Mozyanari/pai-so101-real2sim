@@ -5,6 +5,7 @@
 #   scripts/dataset/build.sh real pai_real      # data/bags/real/* -> data/datasets/pai_real
 #
 # Only successful episodes are kept (INCLUDE_FAILED=1 keeps all). The dataset is rebuilt from scratch.
+# TRIM_IDLE=<motor units> drops each episode's still start (real demos: TRIM_IDLE=2).
 # Upload afterwards (private): .venv/bin/python -m so101_pai.dataset.push --repo-id <hf_user>/<name> --root data/datasets/<name> --yes
 set -eo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
@@ -18,6 +19,7 @@ echo "converting ${#BAGS[@]} session(s): ${BAGS[*]##*/}"
 
 FLAGS=()
 [ "${INCLUDE_FAILED:-0}" = "1" ] && FLAGS+=(--include-failed)
+[ -n "${TRIM_IDLE:-}" ] && FLAGS+=(--trim-idle-start "$TRIM_IDLE")
 rm -rf "$OUT"
 ros_env
 "$PY" -m so101_pai.dataset.bag2lerobot "${BAGS[@]}" --repo-id "local/$NAME" --root "$OUT" "${FLAGS[@]}"

@@ -1,9 +1,12 @@
-"""PlaceBlock: pick a 4.7 cm block and place it on a square plate with the SO-101.
+"""PlaceBlock: pick a 4.7 cm block and place it on a white plate with the SO-101.
 
 Built on LeIsaac's single-arm template (Apache-2.0). Assets are NVIDIA-official:
-Isaac Sim 5.1 Props/Blocks/red_block.usd and SimReady dishware_plastic_smallPlate_a01
-(both fetched by setup/04_task_assets.sh).
-The plate is rescaled and recolored white to match the real ~18 cm round paper plate.
+Isaac Sim 5.1 Props/Blocks/red_block.usd and SimReady dishware_plastic_smallPlate_a01 / dishware_bowl_a01
+(all fetched by setup/04_task_assets.sh).
+The plate is rescaled and recolored white to match a real ~18 cm white paper plate.
+Env overrides, to match the real objects: PAI_PLATE (square | round), PAI_BLOCK_SIZE (m), PAI_BLOCK_MASS (kg),
+PAI_BLOCK_COLOR (red: the Isaac red block's texture | wood: beech, re-tinted every reset), and PAI_LAYOUT
+(default | real1031: plate, block area, front camera and robot color as measured on the real setup on 10/31).
 The table is a plain collision box whose top is at z=0; the photoreal background (3DGS) is layered on later.
 """
 
@@ -17,6 +20,7 @@ from pathlib import Path
 import isaaclab.sim as sim_utils
 import torch
 from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RecorderManagerBaseCfg, SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.sensors import TiledCameraCfg
@@ -41,17 +45,46 @@ BLOCK_USD = str(ASSETS / "blocks" / "red_block.usd")
 PLATE_USD = str(
     ASSETS / "dishware_plastic_smallPlate_a01" / "simready_usd" / "sm_dishware_plastic_smallPlate_a01_01.usd"
 )
-# The asset is a round 9.9 cm x 4.5 cm deep plate; flatten and widen it to a ~17.8 cm x 1.8 cm paper plate.
-PLATE_SCALE = (1.8, 1.8, 0.4)
+# The asset is a 9.9 cm x 4.5 cm deep plate with a rounded-square rim (11.3 cm across the corners), not round;
+# flatten and widen it to ~17.8 cm (20.4 cm across the corners) x 1.8 cm, about an 18 cm paper plate.
+SQUARE_PLATE = (PLATE_USD, (1.8, 1.8, 0.4))
+# The real paper plate is round (decided 10/31). SimReady has no round plate, so flatten its round bowl
+# (16.3 cm x 5.5 cm) to 18 cm x 1.8 cm.
+BOWL_USD = str(ASSETS / "dishware_bowl_a01" / "simready_usd" / "sm_dishware_bowl_a01_01.usda")
+ROUND_PLATE = (BOWL_USD, (1.106, 1.106, 0.33))
+PLATE_USD, PLATE_SCALE = {"square": SQUARE_PLATE, "round": ROUND_PLATE}[os.environ.get("PAI_PLATE", "square")]
 
 LIGHT_SCALE = float(os.environ.get("PAI_LIGHT_SCALE", "1.0"))
 TABLE_SIZE = (0.80, 0.60, 0.04)  # x, y, thickness [m]
-BLOCK_SIZE = 0.047
+BLOCK_SIZE = float(os.environ.get("PAI_BLOCK_SIZE", "0.047"))  # the Isaac block is a 4.7 cm cube; scaled to this
+BLOCK_MASS = float(os.environ.get("PAI_BLOCK_MASS", "0.02"))
+BLOCK_COLOR = os.environ.get("PAI_BLOCK_COLOR", "red")
+# The real block is an unpainted 30 mm beech cube (bought 10/31); its color varies with light and grain.
+WOOD_COLOR = (0.86, 0.62, 0.42)  # warmer than the first try (0.80, 0.64, 0.50), which rendered greyish
 # Robot base at the origin facing +y (LeIsaac SO-101 USD convention). The real 90 x 40 cm table spans
 # x -0.20..0.70 and y -0.09..0.31 around the base (assets/scene/workspace.align.json), so the plate sits front-right
 # and the block front-left, both within ~20 cm of the base. Place the real ones at the same spots.
 BLOCK_INIT = (-0.08, 0.17, BLOCK_SIZE / 2)
 PLATE_INIT = (0.15, 0.18, 0.0)
+BLOCK_RANGE = (0.05, 0.04)  # +- x, y around BLOCK_INIT on every reset
+FRONT_CAMERA: tuple | None = None  # (eye, look-at) in the env frame; None keeps the LeIsaac LiftCube pose
+ROBOT_COLOR: tuple | None = None  # None keeps LeIsaac's yellow 3D-printed parts
+FRONT_FOCAL_MM: float | None = None
+LAYOUT = os.environ.get("PAI_LAYOUT", "default")
+if LAYOUT == "real1031":
+    # Measured on the real setup (10/31): plate 5 cm left of and 17 cm in front of the base, block to the plate's
+    # right, the C920 on the table 45 cm right / 24 cm front / 15 cm up looking left across the plate (aimed so the
+    # plate lands where it does in the real image), and a white-printed arm.
+    # The plate was first measured at y = 0.24, but its 9 cm radius then reached the table's front edge (0.33 m
+    # measured, 0.313 m in the 3DGS); moved to 0.17 in both sim and real at the user's request (10/31).
+    PLATE_INIT = (-0.05, 0.17, 0.0)
+    BLOCK_INIT = (0.12, 0.17, BLOCK_SIZE / 2)
+    BLOCK_RANGE = (0.03, 0.04)
+    FRONT_CAMERA = ((0.45, 0.24, 0.15), (-0.047, 0.142, -0.036))  # yaw/pitch matched to the C920 image (10/31)
+    FRONT_FOCAL_MM = 42.3  # ~711 px at 640 wide: the 18 cm plate spans 256 px at ~0.5 m in the C920 image
+    ROBOT_COLOR = (0.92, 0.92, 0.90)
+elif LAYOUT != "default":
+    raise ValueError(f"PAI_LAYOUT must be default or real1031, got {LAYOUT!r}")
 REST_POSE_DEG = {
     "shoulder_pan": 0.0,
     "shoulder_lift": -100.0,
@@ -60,6 +93,31 @@ REST_POSE_DEG = {
     "wrist_roll": 0.0,
     "gripper": -10.0,
 }
+
+
+def look_at_quat(eye, target) -> tuple[float, float, float, float]:
+    """(w, x, y, z) of an OpenGL-convention camera (looks along -Z, +Y up) at `eye` looking at `target`."""
+    import numpy as np
+
+    from so101_pai.recon.align import _quat_wxyz
+
+    forward = np.subtract(target, eye) / np.linalg.norm(np.subtract(target, eye))
+    right = np.cross(forward, [0.0, 0.0, 1.0])
+    right /= np.linalg.norm(right)
+    return tuple(float(v) for v in _quat_wxyz(np.column_stack([right, np.cross(right, forward), -forward])))
+
+
+def spawn_recolored_robot(prim_path: str, cfg: sim_utils.UsdFileCfg, *args, **kwargs) -> Usd.Prim:
+    """spawn_from_usd, then repaint the SO-101's 3D-printed parts (one shared OmniPBR material) in ROBOT_COLOR."""
+    from pxr import Gf
+
+    prim = sim_utils.spawn_from_usd(prim_path, cfg, *args, **kwargs)
+    for robot in sim_utils.find_matching_prims(prim_path):
+        shader = robot.GetStage().GetPrimAtPath(f"{robot.GetPath()}/Looks/material_a_3d_printed/Shader")
+        if not shader.IsValid():
+            raise RuntimeError(f"no 3D-printed material under {robot.GetPath()}; the SO-101 USD changed")
+        shader.GetAttribute("inputs:diffuse_color_constant").Set(Gf.Vec3f(*ROBOT_COLOR))
+    return prim
 
 
 def spawn_fixed_plate(prim_path: str, cfg: sim_utils.UsdFileCfg, *args, **kwargs) -> Usd.Prim:
@@ -92,8 +150,12 @@ class PlaceBlockSceneCfg(SingleArmTaskSceneCfg):
         prim_path="{ENV_REGEX_NS}/Block",
         spawn=sim_utils.UsdFileCfg(
             usd_path=BLOCK_USD,
+            scale=(BLOCK_SIZE / 0.047,) * 3,
+            visual_material=(
+                sim_utils.PreviewSurfaceCfg(diffuse_color=WOOD_COLOR, roughness=0.7) if BLOCK_COLOR == "wood" else None
+            ),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.02),
+            mass_props=sim_utils.MassPropertiesCfg(mass=BLOCK_MASS),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=BLOCK_INIT),
     )
@@ -113,7 +175,8 @@ class PlaceBlockSceneCfg(SingleArmTaskSceneCfg):
 
     front: TiledCameraCfg = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/base/front_camera",
-        # Placeholder pose from LeIsaac LiftCube; replaced by the measured real camera pose.
+        # Pose from LeIsaac LiftCube, kept for the real setup (decided 10/31): the training data uses it, and the 3DGS
+        # background is only sharp from this side. The real camera is placed to match it (robot/camera_overlay.py).
         offset=TiledCameraCfg.OffsetCfg(
             pos=(-0.6, -0.75, 0.38), rot=(0.77337, 0.55078, -0.2374, -0.20537), convention="opengl"
         ),
@@ -165,6 +228,7 @@ class PlaceBlockEnvCfg(SingleArmTaskEnvCfg):
     recorders: RecorderManagerBaseCfg = RecorderManagerBaseCfg()
 
     task_description: str = "Put the red block on the plate."
+    block_size: float = BLOCK_SIZE  # the scripted expert plans its grasp with it
 
     def use_teleop_device(self, teleop_device) -> None:
         super().use_teleop_device(teleop_device)
@@ -177,7 +241,8 @@ class PlaceBlockEnvCfg(SingleArmTaskEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        self.episode_length_s = 30.0
+        # 45 s (was 30): policy successes in the sim came at 21-32 s when replanning every 15-25 actions.
+        self.episode_length_s = 45.0
         # Physics at 60 Hz, control + camera rendering at 30 Hz (= dataset fps). Rendering two cameras every
         # 60 Hz step only reached ~17 Hz wall-clock on the RTX 5060 Ti.
         self.sim.dt = 1 / 60
@@ -189,6 +254,16 @@ class PlaceBlockEnvCfg(SingleArmTaskEnvCfg):
         self.scene.robot.init_state.pos = (0.0, 0.0, 0.0)
         # Start folded like the real arm at rest (LeIsaac SO101_FOLLOWER_REST_POSE_RANGE centers, degrees).
         self.scene.robot.init_state.joint_pos = {name: math.radians(deg) for name, deg in REST_POSE_DEG.items()}
+        if ROBOT_COLOR is not None:
+            self.scene.robot.spawn.func = spawn_recolored_robot
+        if FRONT_CAMERA is not None:
+            eye, target = FRONT_CAMERA
+            self.scene.front.prim_path = "{ENV_REGEX_NS}/FrontCamera"  # in the env frame, not the robot base's
+            self.scene.front.offset = TiledCameraCfg.OffsetCfg(
+                pos=eye, rot=look_at_quat(eye, target), convention="opengl"
+            )
+        if FRONT_FOCAL_MM is not None:
+            self.scene.front.spawn.focal_length = FRONT_FOCAL_MM
 
         add_background(self.scene)
 
@@ -198,8 +273,8 @@ class PlaceBlockEnvCfg(SingleArmTaskEnvCfg):
                 randomize_object_uniform(
                     "block",
                     pose_range={
-                        "x": (-0.05, 0.05),
-                        "y": (-0.04, 0.04),
+                        "x": (-BLOCK_RANGE[0], BLOCK_RANGE[0]),
+                        "y": (-BLOCK_RANGE[1], BLOCK_RANGE[1]),
                         "z": (0.0, 0.0),
                         "yaw": (-45 * torch.pi / 180, 45 * torch.pi / 180),
                     },
@@ -218,6 +293,18 @@ class PlaceBlockEnvCfg(SingleArmTaskEnvCfg):
                 ),
             ],
         )
+
+        if BLOCK_COLOR == "wood":
+            self.events.block_color = EventTerm(
+                func=mdp.randomize_block_color,
+                mode="reset",
+                params={
+                    "asset_cfg": SceneEntityCfg("block"),
+                    "base": WOOD_COLOR,
+                    "brightness": (0.8, 1.15),
+                    "jitter": 0.04,
+                },
+            )
 
 
 def add_background(scene: PlaceBlockSceneCfg) -> None:

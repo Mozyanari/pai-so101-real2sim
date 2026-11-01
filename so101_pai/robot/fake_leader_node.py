@@ -15,8 +15,7 @@ from sensor_msgs.msg import JointState
 from so101_pai.common import contract
 from so101_pai.common.ros_msgs import joint_state_msg
 from so101_pai.common.ros_node import run
-
-REST_POSE_DEG = np.array([0.0, -100.0, 90.0, 50.0, 0.0, -10.0])
+from so101_pai.robot.rest import REST_POSE_DEG
 
 
 class FakeLeaderNode(Node):
