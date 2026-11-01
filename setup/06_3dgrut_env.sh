@@ -8,7 +8,7 @@
 # Why conda and not a plain uv .venv: building the CUDA extensions needs nvcc 12.8, and this machine has no
 # system CUDA toolkit (sub-option A1 would need apt/sudo). Sub-option A3 (.venv-local CUDA) installs the CUDA
 # runfile with --silent, which accepts the CUDA EULA on the user's behalf; the conda toolkit is the same
-# route setup/01_leisaac_env.sh already uses. Nothing is installed system-wide; see PLAN.md §2.5.
+# route setup/01_leisaac_env.sh already uses. Nothing is installed system-wide; see docs/DESIGN.md §3.
 set -euo pipefail
 
 unset PYTHONPATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH COLCON_PREFIX_PATH LD_LIBRARY_PATH \

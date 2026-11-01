@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Create the conda env "colmap": COLMAP (CUDA build) + ffmpeg, both from conda-forge.
 # Used by scripts/recon/run.sh for frame extraction and structure-from-motion.
-# Nothing is installed system-wide (no apt, no sudo); see PLAN.md §2.5.
+# Nothing is installed system-wide (no apt, no sudo); see docs/DESIGN.md §3.
 set -euo pipefail
 
 # ~/.bashrc sources ROS 2 Jazzy; keep its Python/CMake paths out of this env.

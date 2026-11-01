@@ -1,4 +1,4 @@
-"""Upload a local LeRobot dataset to the Hugging Face Hub as a PRIVATE dataset (for streaming training).
+"""Upload a local LeRobot dataset to the Hugging Face Hub as a PRIVATE dataset (a backup; training reads it locally).
 
     python -m so101_pai.dataset.push --repo-id <hf_user>/pai_sim --root data/datasets/pai_sim --yes
 

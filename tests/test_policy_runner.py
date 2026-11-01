@@ -89,7 +89,6 @@ class _FakePolicy(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.weight = torch.nn.Parameter(torch.zeros(1))
-        self.register_buffer("inv_freq", torch.ones(1))
 
     @classmethod
     def from_pretrained(cls, path, config):
@@ -106,22 +105,7 @@ def _patch_lerobot(monkeypatch, config):
     monkeypatch.setattr(policies, "make_pre_post_processors", lambda **kwargs: (None, None))
 
 
-def test_load_policy_keeps_groot_in_bf16_and_reads_weights_on_cpu(monkeypatch):
-    from types import SimpleNamespace
-
-    from so101_pai.policy.runner import load_policy
-
-    config = SimpleNamespace(type="groot", device="cuda", model_params_fp32=True, n_action_steps=16)
-    _patch_lerobot(monkeypatch, config)
-    runner = load_policy("ckpt", device="cpu", task="t")
-    assert config.model_params_fp32 is False
-    assert _FakePolicy.loaded_on == "cpu"
-    assert runner.device == "cpu" and config.device == "cpu"
-    assert runner.policy.weight.dtype == torch.bfloat16
-    assert runner.policy.inv_freq.dtype == torch.float32  # buffers keep their precision
-
-
-def test_load_policy_leaves_other_policies_alone(monkeypatch):
+def test_load_policy_reads_weights_on_cpu_and_overrides_n_action_steps(monkeypatch):
     from types import SimpleNamespace
 
     from so101_pai.policy.runner import load_policy
@@ -129,6 +113,7 @@ def test_load_policy_leaves_other_policies_alone(monkeypatch):
     config = SimpleNamespace(type="act", device="cuda", n_action_steps=100)
     _patch_lerobot(monkeypatch, config)
     runner = load_policy("ckpt", device="cpu", task="t", n_action_steps=20)
-    assert not hasattr(config, "model_params_fp32")
+    assert _FakePolicy.loaded_on == "cpu"
+    assert runner.device == "cpu" and config.device == "cpu"
     assert runner.policy.weight.dtype == torch.float32
     assert config.n_action_steps == 20

@@ -7,7 +7,7 @@
 - 機材：SO-101（リーダー `/dev/ttyACM0`・フォロワー `/dev/ttyACM1`）、正面カメラ C920（`/dev/video0`）、手先カメラ（`/dev/video2`）、RTX 5060 Ti 16 GB、Ubuntu 24.04 + ROS 2 Jazzy。
 - 物：木の積み木（約 3 cm 角）、白い紙皿（直径約 18 cm）、机（90 × 40 cm、高さ 35 cm）。
 - リポジトリに入っていないもの（自分で作るか取得する）：アセット（`setup/04_task_assets.sh`）、3DGS の背景（`assets/scene/*.usdz`）、rosbag、データセット、学習済みモデル、動画。
-- システムの Python には何も入れない。ツールごとに環境を分ける（`PLAN.md` §2.5）。
+- システムの Python には何も入れない。ツールごとに環境を分ける（`docs/DESIGN.md` §3）。
 - Isaac Sim は ROS を source していないシェルから起動する（`scripts/sim/run.sh` やシミュレーター用のスクリプトが処理する）。
 
 ## 1. 環境構築

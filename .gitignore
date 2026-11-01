@@ -22,7 +22,6 @@ assets/
 
 # The assignment spec is distributed by the course
 *.pdf
-.venv-train/
 .coverage
 
 # phone captures of the real workspace and progress-page images of the room (private)
