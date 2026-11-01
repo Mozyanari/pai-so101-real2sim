@@ -494,4 +494,4 @@
 ### 11/2 0:10 リポジトリの整理
 - 結果に使っていないものを消した：GR00T N1.7 まわり（`setup/07_cloud_train_env.sh`、`train.sh` の groot と HF Hub からのストリーミング、推論の bf16 変換とそのテスト、`.venv` の groot extra）、リセットの遅さを調べた `sim/tools/profile_reset.py`。
 - 最初の計画書 `PLAN.md` は、実際と違う点が多くなったので消し、`docs/DESIGN.md`（トピックの決まり、環境の分け方、評価の設計、計画から変えたこと）にまとめ直した。README・CLAUDE.md・setup のコメントの参照先を直し、README に使い方と最終的な配置の環境変数を整理した。
-- CLAUDE.md と消した setup スクリプトに所属が分かる語が入っていたので、今のファイルからは消した（過去のコミットには残っている）。
+- CLAUDE.md と消した setup スクリプトに所属が分かる語が入っていたので、今のファイルから消し、ユーザーの許可を得て履歴も書き換えて force push した（main の全コミットで該当なしを確認。書き換え前は手元の `backup/before-affiliation-rewrite` に残してある）。
